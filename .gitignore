@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# 빌드 결과물
+projects/web-agent/dist/
+
+# 로컬 Claude 설정 (개인 hooks/permissions 포함)
+**/.claude/settings.local.json
+
+# 런타임 데이터 (개인 작업 기록)
+shared/activity-logs.json
+shared/task-queue/pending/*.json
+shared/task-queue/in-progress/*.json
+shared/task-queue/completed/*.json
+
+# 프로젝트별 스펙 (사용자가 직접 추가하는 파일)
+shared/screens/*/
+
+# 환경변수
+.env
+
+# 의존성
+node_modules/
+**/node_modules/

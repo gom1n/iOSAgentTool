@@ -1,0 +1,673 @@
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { exec, execSync, spawn } from 'child_process'
+import http from 'http'
+import crypto from 'crypto'
+import { promisify } from 'util'
+
+const pbkdf2 = promisify(crypto.pbkdf2)
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const ROOT = join(__dirname, '..', '..')
+
+async function getClaudeSessionKey() {
+  // 1. 키체인에서 Claude Safe Storage 비밀번호 가져오기
+  const passwordBuf = execSync(
+    'security find-generic-password -s "Claude Safe Storage" -w',
+    { encoding: 'buffer' }
+  )
+  let end = passwordBuf.length
+  while (end > 0 && passwordBuf[end - 1] <= 13) end--
+  const password = passwordBuf.slice(0, end)
+
+  // 2. PBKDF2로 복호화 키 생성 (Chromium 표준)
+  const key = await pbkdf2(password, 'saltysalt', 1003, 16, 'sha1')
+
+  // 3. SQLite에서 sessionKey 쿠키 값 읽기
+  const cookieDb = `${process.env.HOME}/Library/Application Support/Claude/Cookies`
+  const encryptedHex = execSync(
+    `sqlite3 "${cookieDb}" "SELECT hex(encrypted_value) FROM cookies WHERE name='sessionKey' LIMIT 1;"`,
+    { encoding: 'utf-8' }
+  ).trim()
+
+  if (!encryptedHex) throw new Error('sessionKey 쿠키를 찾을 수 없습니다')
+
+  // 4. AES-128-CBC 복호화
+  // v10 prefix(3바이트) 제거 후 다음 16바이트를 IV로 사용, 나머지가 실제 암호문
+  const encBuf = Buffer.from(encryptedHex, 'hex')
+  const iv = encBuf.slice(3, 19)
+  const ciphertext = encBuf.slice(19)
+  const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv)
+  const decryptedBuf = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+
+  // 복호화 결과에서 sk-ant- 패턴 추출 (첫 블록은 헤더)
+  const match = decryptedBuf.toString('latin1').match(/sk-ant-[\x21-\x7e]+/)
+  if (!match) throw new Error('sessionKey 복호화 실패: sk-ant- 패턴 없음')
+
+  return match[0]
+}
+
+async function fetchClaudeUsage() {
+  const sessionKey = await getClaudeSessionKey()
+
+  const headers = {
+    cookie: `sessionKey=${sessionKey}`,
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    accept: 'application/json',
+    'accept-language': 'ko-KR,ko;q=0.9',
+    referer: 'https://claude.ai/',
+  }
+
+  // Claude Code 조직 UUID를 ~/.claude.json에서 직접 읽기 (여기에 실제 API 사용량이 있음)
+  const claudeJson = JSON.parse(readFileSync(`${process.env.HOME}/.claude.json`, 'utf-8'))
+  const orgId = claudeJson?.oauthAccount?.organizationUuid
+  if (!orgId) throw new Error('organizationUuid를 찾을 수 없습니다')
+
+  // 사용량 API 호출
+  const usageRes = await fetch(`https://claude.ai/api/organizations/${orgId}/usage`, { headers })
+  if (!usageRes.ok) throw new Error(`사용량 API 오류: ${usageRes.status}`)
+  const usage = await usageRes.json()
+
+  return { orgId, usage }
+}
+
+const IOS_WATCHER_PORT = 3002
+
+function proxyToWatcher(port, path, method, res, errorMsg) {
+  const options = { hostname: 'localhost', port, path, method }
+  const req = http.request(options, (r) => {
+    let data = ''
+    r.on('data', chunk => (data += chunk))
+    r.on('end', () => res.end(data))
+  })
+  req.on('error', () => {
+    res.writeHead(503)
+    res.end(JSON.stringify({ error: errorMsg }))
+  })
+  req.end()
+}
+
+const QUEUE_BASE = join(ROOT, 'shared/task-queue')
+const FOLDERS = ['pending', 'in-progress', 'completed']
+const LOGS_FILE = join(ROOT, 'shared/activity-logs.json')
+const MAX_LOGS = 200
+
+const STATUS_LABEL = { pending: '대기 중', 'in-progress': '진행 중', completed: '완료' }
+
+function appendActivityLog(entry) {
+  let logs = []
+  try { logs = JSON.parse(readFileSync(LOGS_FILE, 'utf-8')) } catch {}
+  // 같은 taskId + message 조합이 5초 내에 이미 있으면 중복 방지
+  if (entry.taskId || entry.message) {
+    const now = Date.now()
+    const isDup = logs.some(l =>
+      l.taskId === entry.taskId &&
+      l.message === entry.message &&
+      now - new Date(l.time).getTime() < 60000
+    )
+    if (isDup) return
+  }
+  logs.push({ id: Date.now(), time: new Date().toISOString(), agent: 'system', type: 'info', ...entry })
+  if (logs.length > MAX_LOGS) logs = logs.slice(-MAX_LOGS)
+  writeFileSync(LOGS_FILE, JSON.stringify(logs, null, 2))
+}
+
+function ensureDirs() {
+  for (const folder of FOLDERS) {
+    const dir = join(QUEUE_BASE, folder)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  }
+  if (!existsSync(LOGS_FILE)) writeFileSync(LOGS_FILE, '[]')
+}
+
+// 파일시스템 감시: iOS 에이전트가 직접 파일을 이동하거나 API 경유 시 로그 기록
+// 디바운스 맵: "taskId:folder" → 마지막 기록 시각 (중복 방지)
+const _logDebounce = new Map()
+
+function watchTaskQueue() {
+  for (const folder of FOLDERS) {
+    const dir = join(QUEUE_BASE, folder)
+    if (!existsSync(dir)) continue
+    watch(dir, (eventType, filename) => {
+      if (eventType !== 'rename' || !filename?.endsWith('.json')) return
+      const filePath = join(dir, filename)
+      if (!existsSync(filePath)) return
+      try {
+        const task = JSON.parse(readFileSync(filePath, 'utf-8'))
+        const key = `${task.id ?? filename}:${folder}`
+        const now = Date.now()
+        if (_logDebounce.get(key) > now - 2000) return  // 2초 내 중복 무시
+        _logDebounce.set(key, now)
+        const type = folder === 'completed' ? 'success' : 'info'
+        appendActivityLog({
+          agent: 'ios',
+          type,
+          message: `[${task.title ?? filename}] ${STATUS_LABEL[folder] ?? folder}`,
+          taskId: task.id,
+        })
+      } catch {}
+    })
+  }
+}
+
+function findTaskFile(id) {
+  for (const folder of FOLDERS) {
+    const path = join(QUEUE_BASE, folder, `${id}.json`)
+    if (existsSync(path)) return { path, folder }
+  }
+  return null
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = ''
+    req.on('data', chunk => (body += chunk))
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)) } catch { resolve({}) }
+    })
+  })
+}
+
+export function taskSyncPlugin() {
+  ensureDirs()
+  watchTaskQueue()
+  return {
+    name: 'task-sync',
+    configureServer(server) {
+
+      // GET /api/activity-logs — 서버사이드 활동 로그
+      // DELETE /api/activity-logs — 로그 초기화
+      server.middlewares.use('/api/activity-logs', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method === 'DELETE') {
+          try {
+            writeFileSync(LOGS_FILE, '[]')
+            res.end(JSON.stringify({ ok: true }))
+          } catch (e) {
+            res.writeHead(500)
+            res.end(JSON.stringify({ ok: false, error: e.message }))
+          }
+          return
+        }
+        try {
+          const logs = JSON.parse(readFileSync(LOGS_FILE, 'utf-8'))
+          res.end(JSON.stringify(logs))
+        } catch {
+          res.end('[]')
+        }
+      })
+
+      server.middlewares.use('/api/task-queue', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+
+        // GET /api/task-queue — 파일시스템에서 전체 작업 읽기 (iOS 에이전트 상태 반영용)
+        if (req.method === 'GET' && (req.url === '' || req.url === '/')) {
+          const tasks = []
+          for (const folder of FOLDERS) {
+            const dir = join(QUEUE_BASE, folder)
+            if (!existsSync(dir)) continue
+            for (const file of readdirSync(dir).filter(f => f.endsWith('.json'))) {
+              try {
+                const task = JSON.parse(readFileSync(join(dir, file), 'utf-8'))
+                tasks.push({ ...task, status: folder }) // 폴더가 상태의 기준
+              } catch {}
+            }
+          }
+          res.end(JSON.stringify(tasks))
+          return
+        }
+
+        // POST /api/task-queue — 작업 생성
+        if (req.method === 'POST') {
+          const task = await readBody(req)
+          const folder = task.status || 'pending'
+          writeFileSync(join(QUEUE_BASE, folder, `${task.id}.json`), JSON.stringify(task, null, 2))
+          res.end(JSON.stringify({ ok: true }))
+          return
+        }
+
+        // ID 추출: /api/task-queue/task-123-abc
+        const id = req.url?.replace(/^\//, '').split('?')[0]
+
+        // DELETE /api/task-queue/:id — 작업 삭제
+        if (req.method === 'DELETE' && id) {
+          const found = findTaskFile(id)
+          if (found) unlinkSync(found.path)
+          res.end(JSON.stringify({ ok: true }))
+          return
+        }
+
+        // PATCH /api/task-queue/:id — 상태 변경 (폴더 이동)
+        if (req.method === 'PATCH' && id) {
+          const task = await readBody(req)
+          const found = findTaskFile(id)
+
+          // agentSummary가 있으면 agentReports 배열에 누적
+          let agentReports = []
+          if (found) {
+            try { agentReports = JSON.parse(readFileSync(found.path, 'utf-8')).agentReports || [] } catch {}
+            unlinkSync(found.path)
+          }
+          if (task.agentSummary) {
+            agentReports = [...agentReports, { summary: task.agentSummary, completedAt: new Date().toISOString() }]
+          }
+
+          const newFolder = task.status || 'pending'
+          const taskWithTs = { ...task, agentReports, updated_at: new Date().toISOString() }
+          writeFileSync(join(QUEUE_BASE, newFolder, `${id}.json`), JSON.stringify(taskWithTs, null, 2))
+          res.end(JSON.stringify({ ok: true }))
+          return
+        }
+
+        res.statusCode = 404
+        res.end(JSON.stringify({ error: 'not found' }))
+      })
+
+      // GET  /api/file?path=... — 파일 읽기
+      // POST /api/file          — 파일 저장 { path, content }
+      server.middlewares.use('/api/file', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        const params = new URLSearchParams(req.url?.split('?')[1] || '')
+
+        if (req.method === 'GET') {
+          const filePath = params.get('path')
+          if (!filePath || !existsSync(filePath)) {
+            res.writeHead(404)
+            return res.end(JSON.stringify({ error: 'File not found' }))
+          }
+          try {
+            res.end(JSON.stringify({ content: readFileSync(filePath, 'utf-8') }))
+          } catch (e) {
+            res.writeHead(500)
+            res.end(JSON.stringify({ error: e.message }))
+          }
+          return
+        }
+
+        if (req.method === 'POST') {
+          const { path, content } = await readBody(req)
+          try {
+            const dir = path.substring(0, path.lastIndexOf('/'))
+            if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true })
+            writeFileSync(path, content)
+            res.end(JSON.stringify({ ok: true }))
+          } catch (e) {
+            res.writeHead(500)
+            res.end(JSON.stringify({ error: e.message }))
+          }
+          return
+        }
+
+        res.writeHead(405)
+        res.end(JSON.stringify({ error: 'method not allowed' }))
+      })
+
+      // POST /api/git-commit — git add + commit (+ 선택적 checkout)
+      server.middlewares.use('/api/git-commit', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        const { projectPath, branch, message } = await readBody(req)
+        if (!projectPath || !message) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: 'projectPath and message required' }))
+        }
+        const escaped = message.replace(/"/g, '\\"')
+        const checkoutCmd = branch ? `git -C "${projectPath}" checkout "${branch}" && ` : ''
+        // git add -A 후 CLAUDE 관련 파일은 스테이징에서 제거
+        const addCmd = `git -C "${projectPath}" add -A && git -C "${projectPath}" reset HEAD -- CLAUDE.md .claude 2>/dev/null; true`
+        const cmd = `${checkoutCmd}${addCmd} && git -C "${projectPath}" commit -m "${escaped}"`
+        exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err && !stdout.includes('nothing to commit')) {
+            res.end(JSON.stringify({ ok: false, error: (stderr || err.message).trim() }))
+          } else {
+            res.end(JSON.stringify({ ok: true, output: stdout.trim() }))
+          }
+        })
+      })
+
+      // POST /api/git-rollback — 마지막 커밋 취소 (변경사항은 유지)
+      server.middlewares.use('/api/git-rollback', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        const { projectPath } = await readBody(req)
+        if (!projectPath) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: 'projectPath required' }))
+        }
+        exec(`git -C "${projectPath}" reset --soft HEAD~1`, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) {
+            res.end(JSON.stringify({ ok: false, error: (stderr || err.message).trim() }))
+          } else {
+            res.end(JSON.stringify({ ok: true }))
+          }
+        })
+      })
+
+      // POST /api/open-file — Xcode로 파일 열기
+      server.middlewares.use('/api/open-file', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        const { path: filePath } = await readBody(req)
+        if (!filePath) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: 'path required' }))
+        }
+        exec(`open -a Xcode "${filePath}"`, (err, _, stderr) => {
+          if (err) {
+            res.end(JSON.stringify({ ok: false, error: (stderr || err.message).trim() }))
+          } else {
+            res.end(JSON.stringify({ ok: true }))
+          }
+        })
+      })
+
+      // GET /api/system-paths — 서버 측 경로 정보 (클라이언트 하드코딩 제거용)
+      server.middlewares.use('/api/system-paths', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        res.end(JSON.stringify({
+          root: ROOT,
+          screensBase: join(ROOT, 'shared/screens'),
+          guideFiles: {
+            master: join(ROOT, 'shared/guidelines/MASTER.md'),
+            ios:    join(ROOT, 'projects/ios-agent/CLAUDE.md'),
+          },
+        }))
+      })
+
+      // GET /api/agent-status — 워처에서 iOS 에이전트 실행 상태 조회
+      server.middlewares.use('/api/agent-status', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        proxyToWatcher(IOS_WATCHER_PORT, '/status', 'GET', res, '워처 서버가 실행되지 않았습니다. (ios-watcher.js 확인)')
+      })
+
+      // GET /api/claude-usage — Claude 사용량 조회
+      server.middlewares.use('/api/claude-usage', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        try {
+          const { usage } = await fetchClaudeUsage()
+          res.end(JSON.stringify({ ok: true, usage }))
+        } catch (e) {
+          res.writeHead(500)
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+
+      // POST /api/stop-agent — 워처에 iOS 에이전트 중단 요청
+      server.middlewares.use('/api/stop-agent', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        const proxyReq = http.request(
+          { hostname: 'localhost', port: IOS_WATCHER_PORT, path: '/stop', method: 'POST' },
+          (r) => {
+            let data = ''
+            r.on('data', chunk => (data += chunk))
+            r.on('end', () => {
+              try {
+                const result = JSON.parse(data)
+                if (result.ok) {
+                  appendActivityLog({ agent: 'ios', type: 'stopped', message: 'iOS 에이전트 강제 중단됨' })
+                }
+              } catch {}
+              res.end(data)
+            })
+          }
+        )
+        proxyReq.on('error', () => {
+          res.writeHead(503)
+          res.end(JSON.stringify({ error: '워처 서버가 실행되지 않았습니다. (ios-watcher.js 확인)' }))
+        })
+        proxyReq.end()
+      })
+
+      // GET /api/git-diff?projectPath=... — git diff 조회
+      server.middlewares.use('/api/git-diff', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        const params = new URLSearchParams(req.url?.split('?')[1] || '')
+        const projectPath = params.get('projectPath')
+
+        if (!projectPath || !existsSync(projectPath)) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: 'Invalid projectPath' }))
+        }
+
+        exec(`git -C "${projectPath}" diff HEAD`, { maxBuffer: 2 * 1024 * 1024 }, (_, stdout) => {
+          res.end(JSON.stringify({ diff: stdout || '' }))
+        })
+      })
+
+      // ── Xcode 빌드 ──────────────────────────────────────
+      // 빌드 상태는 서버 메모리에 유지 (단일 빌드만 지원)
+      const buildState = { status: 'idle', logs: [], proc: null }
+
+      // POST /  → 빌드 시작
+      // GET  /logs → 로그 + 상태 폴링
+      // POST /stop → 빌드 중단
+      server.middlewares.use('/api/xcode-build', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        const sub = req.url || '/'
+
+        // GET /logs
+        if (sub === '/logs' && req.method === 'GET') {
+          return res.end(JSON.stringify({ status: buildState.status, logs: buildState.logs }))
+        }
+
+        // POST /stop
+        if (sub === '/stop' && req.method === 'POST') {
+          if (buildState.proc) {
+            try { process.kill(-buildState.proc.pid, 'SIGTERM') } catch { buildState.proc.kill('SIGTERM') }
+            buildState.status = 'idle'
+            buildState.proc = null
+          }
+          return res.end(JSON.stringify({ ok: true }))
+        }
+
+        // POST / — 빌드 시작
+        if ((sub === '' || sub === '/') && req.method === 'POST') {
+          if (buildState.status === 'running') {
+            res.writeHead(409)
+            return res.end(JSON.stringify({ error: '이미 빌드 중입니다' }))
+          }
+          const { projectPath, scheme, destination, configuration } = await readBody(req)
+          if (!projectPath || !scheme) {
+            res.writeHead(400)
+            return res.end(JSON.stringify({ error: 'projectPath, scheme 필요' }))
+          }
+          if (!existsSync(projectPath)) {
+            res.writeHead(400)
+            return res.end(JSON.stringify({ error: '프로젝트 경로를 찾을 수 없습니다' }))
+          }
+
+          // .xcworkspace 또는 .xcodeproj 자동 감지
+          let buildFlag, buildTarget
+          try {
+            const entries = readdirSync(projectPath)
+            const ws = entries.find(e => e.endsWith('.xcworkspace') && !e.includes('project.xcworkspace'))
+            const proj = entries.find(e => e.endsWith('.xcodeproj'))
+            if (ws) { buildFlag = '-workspace'; buildTarget = join(projectPath, ws) }
+            else if (proj) { buildFlag = '-project'; buildTarget = join(projectPath, proj) }
+            else {
+              res.writeHead(400)
+              return res.end(JSON.stringify({ error: '.xcworkspace / .xcodeproj를 찾을 수 없습니다' }))
+            }
+          } catch (e) {
+            res.writeHead(500)
+            return res.end(JSON.stringify({ error: e.message }))
+          }
+
+          const destArgs = destination ? ['-destination', destination] : ['-destination', 'generic/platform=iOS']
+          const configArgs = configuration ? ['-configuration', configuration] : []
+          const args = [buildFlag, buildTarget, '-scheme', scheme, ...configArgs, ...destArgs, 'build']
+          buildState.status = 'running'
+          buildState.logs = [`▶ xcodebuild ${args.join(' ')}`]
+          const proc = spawn('xcodebuild', args, { detached: true })
+          buildState.proc = proc
+
+          const onData = (data) => {
+            const lines = data.toString().split('\n').filter(l => l.trim())
+            buildState.logs.push(...lines)
+            if (buildState.logs.length > 500) buildState.logs = buildState.logs.slice(-500)
+          }
+          proc.stdout.on('data', onData)
+          proc.stderr.on('data', onData)
+          proc.on('close', (code) => {
+            buildState.status = code === 0 ? 'success' : 'failed'
+            buildState.logs.push(code === 0 ? '✅ 빌드 성공' : `❌ 빌드 실패 (exit ${code})`)
+            buildState.proc = null
+          })
+
+          return res.end(JSON.stringify({ ok: true }))
+        }
+
+        res.writeHead(404)
+        res.end(JSON.stringify({ error: 'not found' }))
+      })
+
+      // POST /api/compress-spec — Python 스크립트로 spec.md 경량화
+      server.middlewares.use('/api/compress-spec', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+        const { content } = await readBody(req)
+        if (!content) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: 'content required' }))
+        }
+        const scriptPath = join(ROOT, 'shared/compress_spec.py')
+        try {
+          const compressed = await new Promise((resolve, reject) => {
+            const proc = spawn('python3', [scriptPath, '-'], { stdio: ['pipe', 'pipe', 'pipe'] })
+            let out = ''
+            let err = ''
+            proc.stdout.on('data', d => { out += d })
+            proc.stderr.on('data', d => { err += d })
+            proc.on('close', code => {
+              if (code !== 0) reject(new Error(err || `python3 exit ${code}`))
+              else resolve(out)
+            })
+            proc.stdin.write(content, 'utf-8')
+            proc.stdin.end()
+          })
+          const origSize = Buffer.byteLength(content, 'utf-8')
+          const compSize = Buffer.byteLength(compressed, 'utf-8')
+          res.end(JSON.stringify({ compressed, originalSize: origSize, compressedSize: compSize }))
+        } catch (e) {
+          res.writeHead(500)
+          res.end(JSON.stringify({ error: e.message }))
+        }
+      })
+
+      // POST /api/summarize-screen — 파일 읽어서 Claude Haiku로 화면 요약 생성
+      server.middlewares.use('/api/summarize-screen', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          return res.end(JSON.stringify({ error: 'method not allowed' }))
+        }
+
+        const { filePath } = await readBody(req)
+        if (!filePath || !existsSync(filePath)) {
+          res.writeHead(400)
+          return res.end(JSON.stringify({ error: '파일을 찾을 수 없습니다.' }))
+        }
+
+        const apiKey = process.env.ANTHROPIC_API_KEY
+        if (!apiKey) {
+          res.writeHead(500)
+          return res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY 환경변수가 없습니다.' }))
+        }
+
+        let fileContent
+        try {
+          fileContent = readFileSync(filePath, 'utf-8')
+        } catch (e) {
+          res.writeHead(500)
+          return res.end(JSON.stringify({ error: e.message }))
+        }
+
+        // 너무 긴 파일은 앞부분만 사용 (약 6000자)
+        const truncated = fileContent.length > 6000
+          ? fileContent.slice(0, 6000) + '\n// ... (이하 생략)'
+          : fileContent
+
+        const prompt = `다음은 iOS Swift 파일입니다. 이 파일을 분석해서 JSON으로만 응답하세요.
+
+\`\`\`swift
+${truncated}
+\`\`\`
+
+아래 형식의 JSON만 출력하세요 (설명 없이):
+{
+  "description": "이 화면이 무엇을 하는 화면인지 한 문장으로",
+  "features": "주요 기능1\\n주요 기능2\\n주요 기능3",
+  "notes": "Claude Code가 이 파일 작업 시 알아야 할 기술적 특이사항. 없으면 빈 문자열"
+}`
+
+        try {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 512,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+          })
+
+          if (!response.ok) {
+            const errText = await response.text()
+            res.writeHead(500)
+            return res.end(JSON.stringify({ error: `API 오류: ${errText}` }))
+          }
+
+          const data = await response.json()
+          const text = data.content?.[0]?.text || ''
+
+          // JSON 파싱
+          const jsonMatch = text.match(/\{[\s\S]*\}/)
+          if (!jsonMatch) {
+            res.writeHead(500)
+            return res.end(JSON.stringify({ error: '응답 파싱 실패', raw: text }))
+          }
+
+          const summary = JSON.parse(jsonMatch[0])
+          res.end(JSON.stringify({ ok: true, ...summary }))
+        } catch (e) {
+          res.writeHead(500)
+          res.end(JSON.stringify({ error: e.message }))
+        }
+      })
+    },
+  }
+}

@@ -1,0 +1,248 @@
+.filepath-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.filepath-input-wrap label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.filepath-field {
+  position: relative;
+}
+
+.filepath-input-row {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  background: var(--bg-primary);
+}
+
+.filepath-input-row:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.filepath-input-row input {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 8px 11px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 0;
+}
+
+.filepath-input-row input:focus {
+  outline: none;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.browse-btn {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-left: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.browse-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.browse-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.browse-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Root folder hint */
+.filepath-root-hint {
+  font-size: 11px;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 5px 9px;
+  margin-bottom: 5px;
+}
+
+.filepath-root-hint strong {
+  font-weight: 700;
+}
+
+/* Error */
+.filepath-error {
+  font-size: 11px;
+  color: #ef4444;
+  margin-top: 4px;
+}
+
+/* Cache clear button */
+.cache-clear-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  margin-left: 4px;
+}
+
+.cache-clear-btn:hover {
+  text-decoration: underline;
+}
+
+/* Indexed hint */
+.indexed-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.indexed-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  flex-shrink: 0;
+}
+
+.indexed-hint strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.reindex-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.reindex-btn:hover {
+  text-decoration: underline;
+}
+
+/* Dropdown */
+.suggestions-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  overflow: hidden;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.suggestion-item:hover,
+.suggestion-item.highlighted {
+  background: #dbeafe;
+}
+
+@media (prefers-color-scheme: dark) {
+  .suggestion-item:hover,
+  .suggestion-item.highlighted {
+    background: #1e3a5f;
+  }
+}
+
+.suggestion-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.suggestion-path {
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+.path-sep {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.path-seg {
+  color: var(--text-secondary);
+}
+
+.path-seg-highlight {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.suggestions-footer {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  text-align: center;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
