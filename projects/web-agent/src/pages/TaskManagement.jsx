@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { MdChecklist, MdMoreVert, MdEdit, MdContentCopy, MdDelete } from 'react-icons/md'
+import TourOverlay from '../components/TourOverlay'
+import usePageTour from '../hooks/usePageTour'
 import './TaskManagement.css'
 
-const PRIORITIES = ['높음', '중간', '낮음']
+const TOUR_STEPS = [
+  { title: '작업 관리', desc: 'Claude 에이전트에게 맡길 작업을 등록하고 관리합니다.', target: null },
+  { title: '새 작업 추가', desc: '버튼을 클릭해 작업을 추가합니다.\n제목·프로젝트·스킴·요구사항을 입력하면 에이전트가 자동으로 처리합니다.', target: '[data-tour="new-task-btn"]' },
+  { title: '상태 필터', desc: '전체·대기·진행·완료 상태별로 작업을 필터링합니다.', target: '[data-tour="filter-bar"]' },
+  { title: '작업 카드', desc: '카드를 클릭하면 상세 화면으로 이동합니다.\n우측 셀렉트로 상태를 즉시 변경할 수 있습니다.', target: '[data-tour="task-card"]' },
+]
+
+
 const STATUSES   = ['전체', 'pending', 'in-progress', 'completed']
 const STATUS_LABELS        = { pending: '대기', 'in-progress': '진행', completed: '완료' }
 const STATUS_FILTER_LABELS = { '전체': '전체', pending: '대기', 'in-progress': '진행', completed: '완료' }
@@ -37,7 +46,7 @@ function loadScreens() {
   return [{ id: 'CHECK_BREAKDOWN_02', name: '개방플랫폼 분기', platform: 'iOS' }]
 }
 
-const EMPTY_FORM = { title: '', platform: 'iOS', priority: '중간', screenId: '', description: '', requirements: '', projectKey: '', projectPath: '' }
+const EMPTY_FORM = { title: '', platform: 'iOS', screenId: '', description: '', requirements: '', projectKey: '', projectPath: '', scheme: '' }
 
 export default function TaskManagement({ onOpenTask, platformFilter }) {
   const [tasks, setTasks]       = useState([])
@@ -49,11 +58,24 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   const [form, setForm]         = useState(EMPTY_FORM)
   const [menuOpenId, setMenuOpenId] = useState(null)
   const menuRef = useRef(null)
+  const { showTour, startTour, closeTour } = usePageTour('tasks')
 
   useEffect(() => {
     setTasks(JSON.parse(localStorage.getItem('acc_tasks') || '[]'))
-    setScreens(loadScreens())
     setProjects(loadProjects())
+    fetch('/api/screens')
+      .then(r => r.json())
+      .then(({ ids }) => {
+        const current = loadScreens()
+        const synced = current.filter(s => ids.includes(s.id))
+        if (synced.length !== current.length) {
+          localStorage.setItem('acc_screens', JSON.stringify(synced))
+          setScreens(synced)
+        } else {
+          setScreens(current)
+        }
+      })
+      .catch(() => setScreens(loadScreens()))
   }, [])
 
   useEffect(() => {
@@ -98,10 +120,11 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
 
   const handleEdit = (task) => {
     setForm({
-      title: task.title, platform: task.platform, priority: task.priority || '중간',
+      title: task.title, platform: task.platform,
       screenId: task.screenId || '', description: task.description || '',
       requirements: Array.isArray(task.requirements) ? task.requirements.join('\n') : (task.requirements || ''),
       projectKey: task.projectKey || '', projectPath: task.projectPath || '',
+      scheme: task.scheme || '',
     })
     setEditId(task.id)
     setShowForm(true)
@@ -122,12 +145,12 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
     setForm({
       title: task.title + ' (복사)',
       platform: task.platform,
-      priority: task.priority || '중간',
       screenId: task.screenId || '',
       description: task.description || '',
       requirements: Array.isArray(task.requirements) ? task.requirements.join('\n') : (task.requirements || ''),
       projectKey: task.projectKey || '',
       projectPath: task.projectPath || '',
+      scheme: task.scheme || '',
     })
     setEditId(null)
     setShowForm(true)
@@ -149,11 +172,7 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   const baseTasks = platformFilter ? tasks.filter(t => t.platform === platformFilter) : tasks
 
   const sortedTasks = [...(filter === '전체' ? baseTasks : baseTasks.filter(t => t.status === filter))]
-    .sort((a, b) => {
-      const order = { '높음': 0, '중간': 1, '낮음': 2 }
-      if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
-      return new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at)
-    })
+    .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
 
   return (
     <div className="task-management">
@@ -162,9 +181,12 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
           작업 관리
           {platformFilter && <span className="platform-filter-badge">{platformFilter}</span>}
         </h1>
-        {!showForm && (
-          <button className="btn-primary" onClick={() => setShowForm(true)}>+ 새 작업</button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!showForm && (
+            <button className="btn-primary" data-tour="new-task-btn" onClick={() => setShowForm(true)}>+ 새 작업</button>
+          )}
+          <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
+        </div>
       </div>
 
       {showForm && (
@@ -178,12 +200,6 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                 <label>작업 제목 *</label>
                 <input type="text" placeholder="예: 로그인 화면 추가" value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
-              </div>
-              <div className="form-group">
-                <label>우선순위</label>
-                <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
-                  {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                </select>
               </div>
             </div>
             <div className="form-group">
@@ -199,7 +215,7 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                         name="project"
                         value={p.path}
                         checked={form.projectPath === p.path}
-                        onChange={() => setForm(f => ({ ...f, projectKey: p.label, projectPath: p.path }))}
+                        onChange={() => setForm(f => ({ ...f, projectKey: p.label, projectPath: p.path, scheme: '' }))}
                       />
                       <span className="project-radio-label">{p.label}</span>
                       <span className="project-radio-path">{p.path.split('/').pop()}</span>
@@ -207,6 +223,22 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                   ))}
                 </div>
               </div>
+              {(() => {
+                const selectedProject = projects.find(p => p.path === form.projectPath)
+                const schemes = selectedProject?.schemes || []
+                if (!schemes.length) return null
+                return (
+                  <div className="form-group">
+                    <label>스킴</label>
+                    <select value={form.scheme} onChange={e => setForm(f => ({ ...f, scheme: e.target.value }))}>
+                      <option value="">선택 안 함</option>
+                      {schemes.map(s => (
+                        <option key={s.name} value={s.name}>{s.name} ({s.configuration})</option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              })()}
 
             <div className="form-row">
               <div className="form-group flex-2">
@@ -240,7 +272,7 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
         </div>
       )}
 
-      <div className="filter-bar">
+      <div className="filter-bar" data-tour="filter-bar">
         {STATUSES.map(s => (
           <button key={s} className={`filter-btn ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>
             {STATUS_FILTER_LABELS[s]}
@@ -258,16 +290,27 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
         </div>
       ) : (
         <div className="task-list">
-          {sortedTasks.map(task => (
-            <div key={task.id} className={`task-card priority-${task.priority === '높음' ? 'high' : task.priority === '낮음' ? 'low' : 'mid'}`}
+          {sortedTasks.map((task, idx) => (
+            <div key={task.id} {...(idx === 0 ? { 'data-tour': 'task-card' } : {})} className="task-card"
               onClick={(e) => { if (!e.target.closest('button, select')) onOpenTask?.(task) }}
               style={{ cursor: onOpenTask ? 'pointer' : 'default' }}
             >
               <div className="task-card-header">
                 <div className="task-card-left">
-                  <span className={`priority-badge priority-${task.priority === '높음' ? 'high' : task.priority === '낮음' ? 'low' : 'mid'}`}>{task.priority}</span>
-                  <span className={`platform-badge ${task.platform?.toLowerCase()}`}>{task.platform}</span>
+                  {task.projectKey && (() => {
+                    const proj = projects.find(p => p.label === task.projectKey)
+                    const color = proj?.color || '#6b7280'
+                    return (
+                      <span
+                        className="project-key-badge"
+                        style={{ background: color + '22', color, borderColor: color + '55' }}
+                      >
+                        {task.projectKey}
+                      </span>
+                    )
+                  })()}
                   {task.screenId && <span className="screen-id-badge">{task.screenId}</span>}
+                  {task.scheme && <span className="scheme-badge">{task.scheme}</span>}
                 </div>
                 <div className="task-card-actions">
                   <select value={task.status} className={`status-select status-${task.status}`}
@@ -316,6 +359,7 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
           ))}
         </div>
       )}
+      {showTour && <TourOverlay steps={TOUR_STEPS} onClose={closeTour} />}
     </div>
   )
 }

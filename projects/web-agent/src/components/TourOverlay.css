@@ -1,0 +1,130 @@
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  cursor: pointer;
+}
+
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: 0 0 0 3px #3b82f6, 0 0 0 9999px rgba(0, 0, 0, 0.68);
+  pointer-events: none;
+  z-index: 9001;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+.tour-tooltip {
+  position: fixed;
+  z-index: 9002;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 22px 24px 18px;
+  width: 296px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  cursor: default;
+  transition: top 0.25s ease, left 0.25s ease;
+}
+
+.tour-tooltip--center {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.tour-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+
+.tour-dot.active {
+  background: #3b82f6;
+  transform: scale(1.25);
+}
+
+.tour-dot.done {
+  background: #93c5fd;
+}
+
+.tour-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.tour-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.65;
+  white-space: pre-line;
+  margin: 0 0 18px;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.tour-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  border: none;
+}
+
+.tour-btn--next {
+  background: #3b82f6;
+  color: #ffffff;
+}
+.tour-btn--next:hover { background: #2563eb; }
+
+.tour-btn--prev {
+  background: none;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  margin-right: auto;
+}
+.tour-btn--prev:hover { background: #f8fafc; }
+
+.tour-btn--skip {
+  background: none;
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.tour-btn--skip:hover { color: #64748b; }
+
+@media (prefers-color-scheme: dark) {
+  .tour-tooltip { background: #1e293b; }
+  .tour-title   { color: #f1f5f9; }
+  .tour-desc    { color: #94a3b8; }
+  .tour-btn--prev { border-color: #334155; color: #94a3b8; }
+  .tour-btn--prev:hover { background: #334155; }
+  .tour-dot     { background: #334155; }
+  .tour-dot.done { background: #1d4ed8; }
+}

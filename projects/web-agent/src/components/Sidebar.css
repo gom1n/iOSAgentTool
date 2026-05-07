@@ -192,6 +192,30 @@
   to { transform: rotate(360deg); }
 }
 
+.sidebar-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tour-trigger-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #475569;
+  background: none;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.tour-trigger-btn:hover { border-color: #94a3b8; color: #94a3b8; }
+
 .system-status {
   display: flex;
   align-items: center;

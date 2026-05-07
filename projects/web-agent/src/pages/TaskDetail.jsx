@@ -82,6 +82,9 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
   const [buildError, setBuildError]               = useState(null)
   const buildLogRef = useRef(null)
 
+  const [editingScheme, setEditingScheme] = useState(false)
+  const [schemeInput, setSchemeInput]     = useState(task.scheme || '')
+
   // 프로젝트 scheme 로드
   useEffect(() => {
     if (!task.projectKey) return
@@ -261,18 +264,47 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
           <div className="detail-section">
             <h3 className="section-title">정보</h3>
             <div className="detail-meta-list">
-              <div className="detail-meta-item">
-                <span className="meta-key">우선순위</span>
-                <span className={`priority-badge priority-${task.priority === '높음' ? 'high' : task.priority === '낮음' ? 'low' : 'mid'}`}>
-                  {task.priority || '중간'}
-                </span>
-              </div>
               {task.projectKey && (
                 <div className="detail-meta-item">
                   <span className="meta-key">서비스</span>
                   <span className="meta-val">{task.projectKey}</span>
                 </div>
               )}
+              <div className="detail-meta-item">
+                <span className="meta-key">스킴</span>
+                {editingScheme ? (
+                  <div className="scheme-edit-row">
+                    <select
+                      className="scheme-edit-select"
+                      value={schemeInput}
+                      onChange={e => setSchemeInput(e.target.value)}
+                    >
+                      <option value="">없음</option>
+                      {buildSchemes.map(s => (
+                        <option key={s.name} value={s.name}>{s.name}</option>
+                      ))}
+                    </select>
+                    <button className="scheme-edit-confirm" onClick={() => {
+                      const patch = { scheme: schemeInput, status: 'pending' }
+                      updateTask(patch)
+                      syncQ('PATCH', { ...task, ...patch, updated_at: new Date().toISOString() })
+                      addLog(task.id, `스킴 변경: ${schemeInput || '없음'} → 재작업 대기`, 'info')
+                      setEditingScheme(false)
+                    }}>변경 후 재작업</button>
+                    <button className="scheme-edit-cancel" onClick={() => { setSchemeInput(task.scheme || ''); setEditingScheme(false) }}>취소</button>
+                  </div>
+                ) : (
+                  <div className="scheme-display-row">
+                    {task.scheme
+                      ? <span className="scheme-badge-detail">{task.scheme}</span>
+                      : <span className="meta-val meta-val-empty">없음</span>
+                    }
+                    {buildSchemes.length > 0 && (
+                      <button className="scheme-edit-btn" onClick={() => { setSchemeInput(task.scheme || ''); setEditingScheme(true) }}>변경</button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="detail-meta-item">
                 <span className="meta-key">생성일</span>
                 <span className="meta-val">{new Date(task.created_at).toLocaleString('ko-KR')}</span>

@@ -1,4 +1,4 @@
-import { writeFileSync, unlinkSync, existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'fs'
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, readdirSync, readFileSync, watch, statSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { exec, execSync, spawn } from 'child_process'
@@ -88,10 +88,30 @@ function proxyToWatcher(port, path, method, res, errorMsg) {
   req.end()
 }
 
-const QUEUE_BASE = join(ROOT, 'shared/task-queue')
-const FOLDERS = ['pending', 'in-progress', 'completed']
-const LOGS_FILE = join(ROOT, 'shared/activity-logs.json')
+const QUEUE_BASE    = join(ROOT, 'shared/task-queue')
+const FOLDERS       = ['pending', 'in-progress', 'completed']
+const LOGS_FILE     = join(ROOT, 'shared/activity-logs.json')
+const HISTORY_FILE  = join(ROOT, 'shared/task-history.json')
 const MAX_LOGS = 200
+
+function loadHistory() {
+  try { return existsSync(HISTORY_FILE) ? JSON.parse(readFileSync(HISTORY_FILE, 'utf-8')) : [] } catch { return [] }
+}
+
+function appendHistory(task) {
+  const history = loadHistory()
+  if (history.find(h => h.id === task.id)) return
+  history.push({
+    id:         task.id,
+    title:      task.title || '',
+    projectKey: task.projectKey || '기타',
+    scheme:     task.scheme || '',
+    platform:   task.platform || '',
+    completedAt: new Date().toISOString(),
+    createdAt:  task.created_at || new Date().toISOString(),
+  })
+  writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2))
+}
 
 const STATUS_LABEL = { pending: '대기 중', 'in-progress': '진행 중', completed: '완료' }
 
@@ -234,6 +254,8 @@ export function taskSyncPlugin() {
         if (req.method === 'DELETE' && id) {
           const found = findTaskFile(id)
           if (found) unlinkSync(found.path)
+          const history = loadHistory().filter(h => h.id !== id)
+          writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2))
           res.end(JSON.stringify({ ok: true }))
           return
         }
@@ -249,13 +271,14 @@ export function taskSyncPlugin() {
             try { agentReports = JSON.parse(readFileSync(found.path, 'utf-8')).agentReports || [] } catch {}
             unlinkSync(found.path)
           }
-          if (task.agentSummary) {
+          if (task.agentSummary && task.status === 'completed') {
             agentReports = [...agentReports, { summary: task.agentSummary, completedAt: new Date().toISOString() }]
           }
 
           const newFolder = task.status || 'pending'
           const taskWithTs = { ...task, agentReports, updated_at: new Date().toISOString() }
           writeFileSync(join(QUEUE_BASE, newFolder, `${id}.json`), JSON.stringify(taskWithTs, null, 2))
+          if (task.status === 'completed') appendHistory(task)
           res.end(JSON.stringify({ ok: true }))
           return
         }
@@ -369,6 +392,46 @@ export function taskSyncPlugin() {
             res.end(JSON.stringify({ ok: true }))
           }
         })
+      })
+
+      // GET|POST|DELETE /api/task-history
+      server.middlewares.use('/api/task-history', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method === 'GET') {
+          return res.end(JSON.stringify(loadHistory()))
+        }
+        if (req.method === 'POST') {
+          const body = await readBody(req)
+          const entries = body.entries || []
+          const history = loadHistory()
+          const existingIds = new Set(history.map(h => h.id))
+          let added = 0
+          for (const e of entries) {
+            if (!existingIds.has(e.id)) { history.push(e); existingIds.add(e.id); added++ }
+          }
+          writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2))
+          return res.end(JSON.stringify({ ok: true, added }))
+        }
+        if (req.method === 'DELETE') {
+          writeFileSync(HISTORY_FILE, '[]')
+          return res.end(JSON.stringify({ ok: true }))
+        }
+        res.writeHead(405); res.end('{}')
+      })
+
+      // GET /api/screens — shared/screens/ 에 실제 존재하는 screen ID 목록
+      server.middlewares.use('/api/screens', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') { res.writeHead(405); return res.end('{}') }
+        const screensBase = join(ROOT, 'shared/screens')
+        try {
+          const ids = readdirSync(screensBase).filter(f =>
+            statSync(join(screensBase, f)).isDirectory()
+          )
+          res.end(JSON.stringify({ ids }))
+        } catch {
+          res.end(JSON.stringify({ ids: [] }))
+        }
       })
 
       // GET /api/system-paths — 서버 측 경로 정보 (클라이언트 하드코딩 제거용)

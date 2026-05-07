@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { MdMap, MdMenuBook, MdAltRoute, MdAdd, MdFolder } from 'react-icons/md'
 import './Settings.css'
 import FilePathInput from '../components/FilePathInput'
+import TourOverlay from '../components/TourOverlay'
+import usePageTour from '../hooks/usePageTour'
+
+const TOUR_STEPS = [
+  { title: '설정', desc: '에이전트가 작동하기 위한 기본 정보를 등록합니다.\n처음 사용 시 프로젝트 탭부터 시작하세요.', target: null },
+  { title: '화면 매핑 탭', desc: 'iOS 화면(컴포넌트)과 코드 파일을 연결합니다.\n에이전트가 어떤 파일을 수정해야 하는지 파악하는 데 사용됩니다.', target: '[data-tour="tab-mapping"]' },
+  { title: '프로젝트 탭', desc: 'iOS 프로젝트 경로와 빌드 스킴을 등록합니다.\n경로를 입력하면 실시간으로 유효성을 검증합니다.', target: '[data-tour="tab-projects"]' },
+  { title: '가이드 탭', desc: '에이전트의 행동 지침을 편집합니다.\nMaster 가이드와 iOS 에이전트 CLAUDE.md를 직접 수정할 수 있습니다.', target: '[data-tour="tab-guide"]' },
+]
 
 const DEFAULT_MASTER = `# Agent System - 전체 시스템 가이드
 
@@ -159,10 +168,10 @@ export default function Settings() {
   const [specDragging, setSpecDragging] = useState(false)
 
   const [projects, setProjects]       = useState([])
-  const [projectForm, setProjectForm] = useState({ label: '', path: '' })
+  const [projectForm, setProjectForm] = useState({ label: '', path: '', color: '#3b82f6' })
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [editingProjectIdx, setEditingProjectIdx] = useState(null)
-  const [editingProjectForm, setEditingProjectForm] = useState({ label: '', path: '' })
+  const [editingProjectForm, setEditingProjectForm] = useState({ label: '', path: '', color: '#3b82f6' })
   const [pathValidation, setPathValidation] = useState(null)  // null | { valid, target?, reason? }
   const pathValidateTimer = useRef(null)
 
@@ -177,6 +186,37 @@ export default function Settings() {
   const [masterGuide, setMasterGuide] = useState(DEFAULT_MASTER)
 
   const [iosGuide, setIosGuide] = useState(DEFAULT_IOS_GUIDE)
+  const { showTour, startTour, closeTour } = usePageTour('settings')
+  const [migrating, setMigrating]   = useState(false)
+  const [migrateResult, setMigrateResult] = useState(null)
+
+  const handleMigrate = async () => {
+    setMigrating(true)
+    setMigrateResult(null)
+    try {
+      const tasks = JSON.parse(localStorage.getItem('acc_tasks') || '[]')
+      const completed = tasks.filter(t => t.status === 'completed')
+      const entries = completed.map(t => ({
+        id:         t.id,
+        title:      t.title || '',
+        projectKey: t.projectKey || '기타',
+        scheme:     t.scheme || '',
+        platform:   t.platform || '',
+        completedAt: t.updated_at || t.created_at,
+        createdAt:  t.created_at,
+      }))
+      const res = await fetch('/api/task-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      })
+      const data = await res.json()
+      setMigrateResult({ ok: true, added: data.added, total: completed.length })
+    } catch {
+      setMigrateResult({ ok: false })
+    }
+    setMigrating(false)
+  }
   const [savedGuide, setSavedGuide] = useState(null)
   const [editingGuide, setEditingGuide] = useState(null)
   const [systemPaths, setSystemPaths] = useState(null)
@@ -193,7 +233,20 @@ export default function Settings() {
   }
 
   useEffect(() => {
-    setScreens(loadScreens())
+    // shared/screens/ 폴더와 localStorage 동기화 (폴더 직접 삭제 대응)
+    fetch('/api/screens')
+      .then(r => r.json())
+      .then(({ ids }) => {
+        const current = loadScreens()
+        const synced = current.filter(s => ids.includes(s.id))
+        if (synced.length !== current.length) {
+          setScreens(synced)
+          localStorage.setItem('acc_screens', JSON.stringify(synced))
+        } else {
+          setScreens(current)
+        }
+      })
+      .catch(() => setScreens(loadScreens()))
     const loaded = loadProjects()
     setProjects(loaded)
     // 서버 파일과 자동 동기화 (projects.json 없을 때 대비)
@@ -239,8 +292,8 @@ export default function Settings() {
   const handleProjectSubmit = (e) => {
     e.preventDefault()
     if (!projectForm.label.trim() || !projectForm.path.trim()) return
-    saveProjects([...projects, { label: projectForm.label, path: projectForm.path, schemes: [] }])
-    setProjectForm({ label: '', path: '' })
+    saveProjects([...projects, { label: projectForm.label, path: projectForm.path, color: projectForm.color || '#3b82f6', schemes: [] }])
+    setProjectForm({ label: '', path: '', color: '#3b82f6' })
     setShowProjectForm(false)
     setPathValidation(null)
   }
@@ -251,14 +304,14 @@ export default function Settings() {
 
   const handleInlineProjectEdit = (i) => {
     setEditingProjectIdx(i)
-    setEditingProjectForm({ label: projects[i].label, path: projects[i].path })
+    setEditingProjectForm({ label: projects[i].label, path: projects[i].path, color: projects[i].color || '#3b82f6' })
     setPathValidation(null)
     validatePath(projects[i].path)
   }
 
   const handleInlineProjectSave = (i) => {
     if (!editingProjectForm.label.trim() || !editingProjectForm.path.trim()) return
-    saveProjects(projects.map((p, idx) => idx === i ? { ...p, label: editingProjectForm.label, path: editingProjectForm.path } : p))
+    saveProjects(projects.map((p, idx) => idx === i ? { ...p, label: editingProjectForm.label, path: editingProjectForm.path, color: editingProjectForm.color || '#3b82f6' } : p))
     setEditingProjectIdx(null)
     setPathValidation(null)
   }
@@ -452,19 +505,20 @@ export default function Settings() {
     <div className="settings">
       <div className="page-header">
         <h1 className="page-title">설정</h1>
+        <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
       </div>
 
       <div className="tabs">
-        <button className={`tab-btn ${activeTab === 'mapping' ? 'active' : ''}`} onClick={() => setActiveTab('mapping')}>
+        <button data-tour="tab-mapping" className={`tab-btn ${activeTab === 'mapping' ? 'active' : ''}`} onClick={() => setActiveTab('mapping')}>
           <MdMap size={15} /> 컴포넌트 매핑
         </button>
-        <button className={`tab-btn ${activeTab === 'projects' ? 'active' : ''}`} onClick={() => setActiveTab('projects')}>
+        <button data-tour="tab-projects" className={`tab-btn ${activeTab === 'projects' ? 'active' : ''}`} onClick={() => setActiveTab('projects')}>
           <MdFolder size={15} /> 프로젝트
         </button>
         <button className={`tab-btn ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
           <MdAltRoute size={15} /> 브랜치
         </button>
-        <button className={`tab-btn ${activeTab === 'guide' ? 'active' : ''}`} onClick={() => setActiveTab('guide')}>
+        <button data-tour="tab-guide" className={`tab-btn ${activeTab === 'guide' ? 'active' : ''}`} onClick={() => setActiveTab('guide')}>
           <MdMenuBook size={15} /> 가이드
         </button>
       </div>
@@ -801,7 +855,7 @@ export default function Settings() {
               <p className="section-desc">iOS 작업에 사용할 프로젝트 경로를 관리합니다</p>
             </div>
             {!showProjectForm && (
-              <button className="btn-primary" onClick={() => { setShowProjectForm(true); setProjectForm({ label: '', path: '' }) }}>
+              <button className="btn-primary" onClick={() => { setShowProjectForm(true); setProjectForm({ label: '', path: '', color: '#3b82f6' }) }}>
                 + 프로젝트 추가
               </button>
             )}
@@ -814,6 +868,15 @@ export default function Settings() {
               </div>
               <form onSubmit={handleProjectSubmit} className="project-form">
                 <div className="form-row">
+                  <div className="form-group form-group-color">
+                    <label>색상</label>
+                    <input
+                      type="color"
+                      className="project-color-input"
+                      value={projectForm.color || '#3b82f6'}
+                      onChange={e => setProjectForm(f => ({ ...f, color: e.target.value }))}
+                    />
+                  </div>
                   <div className="form-group">
                     <label>프로젝트 이름</label>
                     <input
@@ -865,6 +928,12 @@ export default function Settings() {
                     <div className="project-inline-edit">
                       <div className="project-inline-fields">
                         <input
+                          type="color"
+                          className="project-color-input project-color-input-inline"
+                          value={editingProjectForm.color || '#3b82f6'}
+                          onChange={e => setEditingProjectForm(f => ({ ...f, color: e.target.value }))}
+                        />
+                        <input
                           className="project-inline-input"
                           placeholder="프로젝트 이름"
                           value={editingProjectForm.label}
@@ -896,6 +965,7 @@ export default function Settings() {
                   ) : (
                     <div className="project-item-top">
                       <div className="project-list-info">
+                        <span className="project-color-swatch" style={{ background: p.color || '#3b82f6' }} />
                         <span className="project-list-label">{p.label}</span>
                         <code className="project-list-path">{p.path}</code>
                       </div>
@@ -959,6 +1029,27 @@ export default function Settings() {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'projects' && (
+        <div className="tab-content migrate-section">
+          <div className="section-header">
+            <div>
+              <h2>작업 이력 마이그레이션</h2>
+              <p className="section-desc">localStorage에 저장된 완료 작업을 서버 이력 파일로 옮깁니다. 중복은 자동으로 제외됩니다.</p>
+            </div>
+          </div>
+          <div className="migrate-row">
+            <button className="btn-primary" onClick={handleMigrate} disabled={migrating}>
+              {migrating ? '마이그레이션 중...' : '기존 데이터 마이그레이션'}
+            </button>
+            {migrateResult && (
+              migrateResult.ok
+                ? <span className="migrate-ok">✓ {migrateResult.total}개 중 {migrateResult.added}개 추가됨 (중복 {migrateResult.total - migrateResult.added}개 제외)</span>
+                : <span className="migrate-err">오류가 발생했습니다. 서버가 실행 중인지 확인하세요.</span>
             )}
           </div>
         </div>
@@ -1051,6 +1142,7 @@ export default function Settings() {
           </div>
         </div>
       )}
+      {showTour && <TourOverlay steps={TOUR_STEPS} onClose={closeTour} />}
     </div>
   )
 }

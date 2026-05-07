@@ -1421,3 +1421,47 @@
   .form-row { flex-direction: column; }
   .screen-table { min-width: 700px; }
 }
+
+.migrate-section { margin-top: 8px; }
+
+.migrate-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.migrate-ok { font-size: 13px; color: #10b981; font-weight: 500; }
+.migrate-err { font-size: 13px; color: #ef4444; }
+
+/* 프로젝트 색상 */
+.form-group-color {
+  flex: 0 0 auto;
+  min-width: 60px;
+}
+
+.project-color-input {
+  width: 44px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+  cursor: pointer;
+  background: none;
+}
+
+.project-color-input-inline {
+  height: 32px;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.project-color-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 4px;
+  vertical-align: middle;
+}

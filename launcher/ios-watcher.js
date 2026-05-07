@@ -245,8 +245,11 @@ function runAgent(projectKey, projectPath, projectLabel) {
             updated++
           }
         }
-        const total = (tokenUsage.input_tokens || 0) + (tokenUsage.output_tokens || 0)
-        console.log(`📊 토큰: 입력 ${formatTokens(tokenUsage.input_tokens)}, 출력 ${formatTokens(tokenUsage.output_tokens)} (총 ${formatTokens(total)})${totalCostUsd != null ? ` · $${totalCostUsd.toFixed(4)}` : ''}`)
+        const cacheRead = tokenUsage.cache_read_input_tokens || 0
+        const totalInput = (tokenUsage.input_tokens || 0) + cacheRead
+        const total = totalInput + (tokenUsage.output_tokens || 0)
+        const cacheStr = cacheRead > 0 ? ` (캐시 ${formatTokens(cacheRead)})` : ''
+        console.log(`📊 토큰: 입력 ${formatTokens(totalInput)}${cacheStr}, 출력 ${formatTokens(tokenUsage.output_tokens)} (총 ${formatTokens(total)})${totalCostUsd != null ? ` · $${totalCostUsd.toFixed(4)}` : ''}`)
         if (updated > 0) console.log(`   ${updated}개 작업에 사용량 기록됨`)
       } catch (e) { console.warn('   토큰 기록 실패:', e.message) }
     }

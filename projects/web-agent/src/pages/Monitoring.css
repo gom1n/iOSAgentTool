@@ -651,21 +651,12 @@
 .task-status-dot.in-progress { background: #3b82f6; }
 .task-status-dot.completed { background: #10b981; }
 
-.platform-tag {
+.project-key-badge {
   font-size: 11px;
   font-weight: 600;
   padding: 1px 8px;
-  border-radius: 999px;
-}
-
-.platform-tag.ios {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.platform-tag.web {
-  background: #dbeafe;
-  color: #1d4ed8;
+  border-radius: 4px;
+  border: 1px solid;
 }
 
 .screen-id {
@@ -738,3 +729,5 @@
   .monitoring { padding: 16px; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+.thc-wrap, .thc-empty { margin-bottom: 24px; }

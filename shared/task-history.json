@@ -1,0 +1,74 @@
+[
+  {
+    "id": "task-1776831481786-ylha",
+    "title": "KCP-192022 [코나카드 / IOS] 쿠폰 상세 화면 QR코드 제공",
+    "projectKey": "코나카드",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-04-22T07:33:18.537Z",
+    "createdAt": "2026-04-22T04:18:01.786Z"
+  },
+  {
+    "id": "task-1776908334703-5shs",
+    "title": "테스트 작업",
+    "projectKey": "코나카드",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-04-24T05:15:53.785Z",
+    "createdAt": "2026-04-23T01:38:54.703Z"
+  },
+  {
+    "id": "task-1777011053979-4k1l",
+    "title": "활동 로그의 최대 개수 지정",
+    "projectKey": "기타",
+    "scheme": "",
+    "platform": "Web",
+    "completedAt": "2026-04-27T04:49:54.973Z",
+    "createdAt": "2026-04-24T06:10:53.979Z"
+  },
+  {
+    "id": "task-1777335601843-ovn7",
+    "title": "경고 문구의 레이아웃 버그 수정",
+    "projectKey": "코나카드",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-04-28T04:46:58.881Z",
+    "createdAt": "2026-04-28T00:20:01.843Z"
+  },
+  {
+    "id": "task-1777350253002-itm9",
+    "title": "경고뷰(warnV)의 위아래 간격 추가",
+    "projectKey": "코나카드",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-04-28T04:27:09.247Z",
+    "createdAt": "2026-04-28T04:24:13.002Z"
+  },
+  {
+    "id": "task-1777508884756-mzih",
+    "title": "[MONA] 메인 화면의 비밀메시지 진입점 제거",
+    "projectKey": "MONA",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-04-30T00:30:00.000Z",
+    "createdAt": "2026-04-30T00:28:04.756Z"
+  },
+  {
+    "id": "task-1777510057860-q4h1",
+    "title": "[MONA] 비밀메시지 관련 뷰 숨김처리",
+    "projectKey": "MONA",
+    "scheme": "",
+    "platform": "iOS",
+    "completedAt": "2026-05-07T00:56:53.134Z",
+    "createdAt": "2026-04-30T00:47:37.860Z"
+  },
+  {
+    "id": "task-1778118020554-ksep",
+    "title": " 거래 내역 신청 - 이메일 저장 체크박스 확인",
+    "projectKey": "지역화폐2.0",
+    "scheme": "Sjpay",
+    "platform": "iOS",
+    "completedAt": "2026-05-07T03:16:50.603Z",
+    "createdAt": "2026-05-07T01:40:20.554Z"
+  }
+]

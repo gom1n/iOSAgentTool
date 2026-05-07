@@ -46,6 +46,25 @@ body {
   overflow-y: auto;
 }
 
+.page-tour-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+  line-height: 1;
+}
+.page-tour-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+
 @media (max-width: 768px) {
   .acc-root {
     flex-direction: column;

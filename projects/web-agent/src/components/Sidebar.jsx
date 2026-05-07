@@ -33,7 +33,7 @@ function formatResetsAt(isoStr, key) {
 const LOGO_STORAGE_KEY = 'acc_logo_title'
 const DEFAULT_TITLE = 'Agent System'
 
-export default function Sidebar({ activePage, onNavigate }) {
+export default function Sidebar({ activePage, onNavigate, onStartTour }) {
   const [systemOk, setSystemOk] = useState(true)
   const [usage, setUsage] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -126,6 +126,7 @@ export default function Sidebar({ activePage, onNavigate }) {
         {navItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
+            data-tour={`nav-${id}`}
             className={`nav-item ${activePage === id ? 'active' : ''}`}
             onClick={() => onNavigate(id)}
           >
@@ -135,7 +136,7 @@ export default function Sidebar({ activePage, onNavigate }) {
         ))}
       </nav>
 
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" data-tour="sidebar-footer">
         {usage && (
           <div className="sidebar-usage">
             <div className="sidebar-usage-title">
@@ -169,9 +170,12 @@ export default function Sidebar({ activePage, onNavigate }) {
             })}
           </div>
         )}
-        <div className={`system-status ${systemOk ? 'ok' : 'error'}`}>
-          <span className="status-dot" />
-          <span className="status-text">{systemOk ? '시스템 정상' : '오류 감지'}</span>
+        <div className="sidebar-footer-bottom">
+          <div className={`system-status ${systemOk ? 'ok' : 'error'}`}>
+            <span className="status-dot" />
+            <span className="status-text">{systemOk ? '시스템 정상' : '오류 감지'}</span>
+          </div>
+          <button className="tour-trigger-btn" onClick={onStartTour} title="투어 다시 보기">?</button>
         </div>
       </div>
     </aside>

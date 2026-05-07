@@ -8,7 +8,8 @@
         "configuration": "DebugDev3",
         "destination": "generic/platform=iOS"
       }
-    ]
+    ],
+    "color": "#ff8080"
   },
   {
     "label": "지역화폐2.0",
@@ -38,8 +39,19 @@
         "name": "Incheon",
         "configuration": "Debug-Dev3",
         "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Chungju",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Sjpay",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
       }
-    ]
+    ],
+    "color": "#f7e73b"
   },
   {
     "label": "(구)지역화폐",
@@ -50,7 +62,8 @@
         "configuration": "Debug",
         "destination": "generic/platform=iOS"
       }
-    ]
+    ],
+    "color": "#a54ce1"
   },
   {
     "label": "MONA",
@@ -66,6 +79,7 @@
         "configuration": "Debug",
         "destination": "generic/platform=iOS"
       }
-    ]
+    ],
+    "color": "#3582fd"
   }
 ]

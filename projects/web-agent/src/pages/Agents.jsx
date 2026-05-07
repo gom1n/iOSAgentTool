@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { MdCircle, MdStop, MdRefresh, MdExpandMore, MdExpandLess } from 'react-icons/md'
+import TourOverlay from '../components/TourOverlay'
+import usePageTour from '../hooks/usePageTour'
 import './Agents.css'
+
+const TOUR_STEPS = [
+  { title: '에이전트', desc: '등록된 프로젝트별로 Claude 에이전트가 할당됩니다.\n작업이 pending 상태가 되면 해당 에이전트가 자동으로 실행합니다.', target: null },
+  { title: '에이전트 카드', desc: '각 카드는 하나의 프로젝트 에이전트를 나타냅니다.\n작업 중/대기 중 상태와 세션 정보를 실시간으로 확인합니다.', target: '[data-tour="agent-card"]' },
+  { title: '세션 & 턴 정보', desc: 'Claude Code의 --resume 기능으로 세션이 유지됩니다.\n이전 대화 맥락을 기억해 연속적인 작업이 가능합니다.', target: '[data-tour="agent-session"]' },
+  { title: '에이전트 출력', desc: '실행 중인 에이전트의 터미널 출력을 실시간으로 확인합니다.\nLIVE 표시가 있으면 현재 작동 중입니다.', target: '[data-tour="agent-log-toggle"]' },
+  { title: '중단 & 세션 초기화', desc: '실행 중인 에이전트를 강제 중단하거나\n누적된 대화 세션을 초기화해 새 대화로 시작할 수 있습니다.', target: '[data-tour="agent-actions"]' },
+]
 
 function formatRelative(iso) {
   if (!iso) return ''
@@ -100,7 +110,7 @@ function AgentCard({ project, onOpenTask }) {
   const sessionId = status?.sessionId
 
   return (
-    <div className={`agent-detail-card ${running ? 'running' : ''}`}>
+    <div className={`agent-detail-card ${running ? 'running' : ''}`} data-tour="agent-card">
       {/* 헤더 */}
       <div className="adc-header">
         <div className="adc-header-left">
@@ -113,7 +123,7 @@ function AgentCard({ project, onOpenTask }) {
             <span className="adc-pending-badge">{pendingCount}개 대기</span>
           )}
         </div>
-        <div className="adc-header-actions">
+        <div className="adc-header-actions" data-tour="agent-actions">
           {running && (
             <button className="adc-btn danger" onClick={handleStop} disabled={stopping}>
               <MdStop size={14} />
@@ -133,7 +143,7 @@ function AgentCard({ project, onOpenTask }) {
       </div>
 
       {/* 세션 정보 */}
-      <div className="adc-session-row">
+      <div className="adc-session-row" data-tour="agent-session">
         {sessionId ? (
           <>
             <span className="adc-session-id">세션 {sessionId.slice(0, 8)}...</span>
@@ -160,7 +170,7 @@ function AgentCard({ project, onOpenTask }) {
       {/* 로그 패널 */}
       {(running || logs.length > 0) && (
         <div className="adc-log-section">
-          <button className="adc-log-toggle" onClick={() => setLogsOpen(v => !v)}>
+          <button className="adc-log-toggle" data-tour="agent-log-toggle" onClick={() => setLogsOpen(v => !v)}>
             {logsOpen ? <MdExpandLess size={15} /> : <MdExpandMore size={15} />}
             <span>에이전트 출력</span>
             {running && <span className="adc-log-live-badge">LIVE</span>}
@@ -181,6 +191,7 @@ function AgentCard({ project, onOpenTask }) {
 
 export default function Agents({ onOpenTask }) {
   const [projects, setProjects] = useState([])
+  const { showTour, startTour, closeTour } = usePageTour('agents')
 
   useEffect(() => {
     const load = () => setProjects(JSON.parse(localStorage.getItem('acc_projects') || '[]'))
@@ -196,6 +207,7 @@ export default function Agents({ onOpenTask }) {
         <div className="refresh-info">
           <span className="pulse-dot" />
           <span>3초마다 자동 갱신</span>
+          <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
         </div>
       </div>
 
@@ -211,6 +223,7 @@ export default function Agents({ onOpenTask }) {
           ))}
         </div>
       )}
+      {showTour && <TourOverlay steps={TOUR_STEPS} onClose={closeTour} />}
     </div>
   )
 }

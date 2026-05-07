@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react'
 import {
   MdCheckCircle, MdHourglassEmpty, MdSync, MdInventory2,
 } from 'react-icons/md'
+import TourOverlay from '../components/TourOverlay'
+import usePageTour from '../hooks/usePageTour'
+import TaskHistoryChart from '../components/TaskHistoryChart'
 import './Monitoring.css'
+
+const TOUR_STEPS = [
+  { title: '모니터링', desc: '작업 현황을 실시간으로 확인하는 메인 화면입니다.\n3초마다 자동으로 갱신됩니다.', target: null },
+  { title: '작업 현황 통계', desc: '전체·대기·진행·완료 작업 수를 한눈에 확인합니다.', target: '[data-tour="stats-row"]' },
+  { title: '최근 작업', desc: '가장 최근에 추가된 작업 5개를 표시합니다.\n클릭하면 상세 화면으로 이동합니다.', target: '[data-tour="recent-tasks"]' },
+  { title: '활동 로그', desc: '에이전트와 시스템의 활동 기록을 최신순으로 표시합니다.\n최대 30개까지 보관되며 초기화할 수 있습니다.', target: '[data-tour="activity-log"]' },
+]
 
 const INITIAL_LOGS = [
   { id: 1, time: new Date(Date.now() - 60000).toISOString(), agent: 'system', message: '공유 폴더 연결 확인', type: 'info' },
@@ -40,15 +50,31 @@ function formatRelative(iso) {
 }
 
 
+function loadProjectColorMap() {
+  try {
+    return Object.fromEntries(
+      JSON.parse(localStorage.getItem('acc_projects') || '[]').map(p => [p.label, p.color || '#6b7280'])
+    )
+  } catch { return {} }
+}
+
 export default function Monitoring({ onOpenTask, onOpenPlatform }) {
   const [tasks, setTasks] = useState([])
   const [logs, setLogs]   = useState(INITIAL_LOGS)
+  const [projectColors, setProjectColors] = useState(loadProjectColorMap)
+  const { showTour, startTour, closeTour } = usePageTour('monitoring')
 
   useEffect(() => {
     const refresh = () => setTasks(JSON.parse(localStorage.getItem('acc_tasks') || '[]'))
     refresh()
     const id = setInterval(refresh, 3000)
     return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    const handler = () => setProjectColors(loadProjectColorMap())
+    window.addEventListener('storage', handler)
+    return () => window.removeEventListener('storage', handler)
   }, [])
 
   useEffect(() => {
@@ -101,11 +127,12 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
         <div className="refresh-info">
           <span className="pulse-dot" />
           <span>3초마다 자동 갱신</span>
+          <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
         </div>
       </div>
 
       {/* Stats Row */}
-      <div className="stats-row">
+      <div className="stats-row" data-tour="stats-row">
         <div className="stat-card">
           <div className="stat-card-value">{total}</div>
           <div className="stat-card-label">전체 작업</div>
@@ -128,9 +155,12 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
         </div>
       </div>
 
+      {/* History Chart */}
+      <TaskHistoryChart />
+
       {/* Bottom: Recent Tasks + Activity Log */}
       <div className="bottom-grid">
-        <div className="card recent-tasks">
+        <div className="card recent-tasks" data-tour="recent-tasks">
           <div className="card-header"><h2>최근 작업</h2></div>
           {recentTasks.length === 0 ? (
             <div className="empty-state">
@@ -148,7 +178,17 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
                     <div className="task-mini-info">
                       <span className="task-mini-title">{task.title}</span>
                       <span className="task-mini-meta">
-                        <span className={`platform-tag ${task.platform?.toLowerCase()}`}>{task.platform}</span>
+                        {task.projectKey && (() => {
+                          const color = projectColors[task.projectKey] || '#6b7280'
+                          return (
+                            <span
+                              className="project-key-badge"
+                              style={{ background: color + '22', color, borderColor: color + '55' }}
+                            >
+                              {task.projectKey}
+                            </span>
+                          )
+                        })()}
                         {task.screenId && <span className="screen-id">{task.screenId}</span>}
                       </span>
                     </div>
@@ -160,7 +200,7 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
           )}
         </div>
 
-        <div className="card activity-log">
+        <div className="card activity-log" data-tour="activity-log">
           <div className="card-header">
             <h2>활동 로그</h2>
             <button
@@ -188,6 +228,7 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
           </div>
         </div>
       </div>
+      {showTour && <TourOverlay steps={TOUR_STEPS} onClose={closeTour} />}
     </div>
   )
 }
