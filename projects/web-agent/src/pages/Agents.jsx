@@ -204,9 +204,11 @@ export default function Agents({ onOpenTask }) {
     <div className="agents-page">
       <div className="page-header">
         <h1 className="page-title">에이전트</h1>
-        <div className="refresh-info">
-          <span className="pulse-dot" />
-          <span>3초마다 자동 갱신</span>
+        <div className="page-header-right">
+          <div className="refresh-info">
+            <span className="pulse-dot" />
+            <span>Live</span>
+          </div>
           <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
         </div>
       </div>

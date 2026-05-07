@@ -125,9 +125,11 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
     <div className="monitoring">
       <div className="page-header">
         <h1 className="page-title">모니터링</h1>
-        <div className="refresh-info">
-          <span className="pulse-dot" />
-          <span>3초마다 자동 갱신</span>
+        <div className="page-header-right">
+          <div className="refresh-info">
+            <span className="pulse-dot" />
+            <span>Live</span>
+          </div>
           <button className="page-tour-btn" onClick={startTour} title="페이지 투어">?</button>
         </div>
       </div>

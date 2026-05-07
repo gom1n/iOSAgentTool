@@ -146,10 +146,13 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   }
 
   const handleDuplicate = (task) => {
+    const screenIds = task.screenIds?.length
+      ? task.screenIds
+      : task.screenId ? [task.screenId] : []
     setForm({
       title: task.title + ' (복사)',
       platform: task.platform,
-      screenId: task.screenId || '',
+      screenIds,
       description: task.description || '',
       requirements: Array.isArray(task.requirements) ? task.requirements.join('\n') : (task.requirements || ''),
       projectKey: task.projectKey || '',
