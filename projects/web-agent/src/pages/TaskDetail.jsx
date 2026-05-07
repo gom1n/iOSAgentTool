@@ -69,6 +69,50 @@ function AgentReportItem({ report, index, defaultOpen }) {
   )
 }
 
+function AgentDiffItem({ diff, index, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  // diff를 파일별로 분리해서 렌더
+  const sections = diff.split(/^(?=diff --git )/m).filter(s => s.startsWith('diff --git'))
+
+  return (
+    <div className="agent-diff-item">
+      <button className="agent-report-item-toggle" onClick={() => setOpen(v => !v)}>
+        <span className="agent-report-item-num">#{index}</span>
+        <span className="agent-diff-file-count">{sections.length}개 파일</span>
+        <span className="agent-report-item-chevron">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="agent-diff-body">
+          {sections.map((section, i) => {
+            const fileMatch = section.match(/^diff --git a\/(.*?) b\//)
+            const fileName = fileMatch ? fileMatch[1].split('/').pop() : '?'
+            const filePath = fileMatch ? fileMatch[1] : ''
+            const lines = section.split('\n').slice(4) // diff --git, index, ---, +++ 헤더 제거
+            return (
+              <div key={i} className="agent-diff-file">
+                <div className="agent-diff-file-header">
+                  <span className="agent-diff-file-name">{fileName}</span>
+                  <span className="agent-diff-file-path">{filePath}</span>
+                </div>
+                <div className="agent-diff-lines">
+                  {lines.map((line, j) => {
+                    let cls = 'diff-line'
+                    if (line.startsWith('+') && !line.startsWith('+++')) cls += ' diff-add'
+                    else if (line.startsWith('-') && !line.startsWith('---')) cls += ' diff-del'
+                    else if (line.startsWith('@@')) cls += ' diff-hunk'
+                    return <div key={j} className={cls}>{line || ' '}</div>
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) {
   const [task, setTask]               = useState(initialTask)
   const [newReq, setNewReq]           = useState('')
@@ -385,6 +429,24 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
           </div>
         )
       })()}
+
+      {/* 코드 변경 diff */}
+      {task.agentDiffs?.length > 0 && (
+        <div className="agent-report-wrap">
+          <div className="agent-report-list-header">
+            <span className="agent-report-title">📝 코드 변경</span>
+            <span className="agent-report-count">{task.agentDiffs.length}회</span>
+          </div>
+          {[...task.agentDiffs].reverse().map((d, i) => (
+            <AgentDiffItem
+              key={i}
+              diff={d.diff}
+              index={task.agentDiffs.length - i}
+              defaultOpen={i === 0}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Xcode 빌드 패널: iOS 완료 작업만 */}
       {task.platform === 'iOS' && task.status === 'completed' && task.projectPath && (

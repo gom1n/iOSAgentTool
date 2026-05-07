@@ -12,7 +12,7 @@
  *   POST /session-reset       → 특정 프로젝트 세션 초기화  { project }
  */
 
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import fs from 'fs'
 import http from 'http'
 import { fileURLToPath } from 'url'
@@ -113,6 +113,34 @@ function appendActivityLog(entry) {
   } catch {}
 }
 
+// ── Git diff 필터 ─────────────────────────────────────────────────────────
+const DIFF_EXCLUDE = [
+  /Package\.resolved/, /Package\.swift/, /Podfile\.lock/,
+  /\.pbxproj/, /\.xcworkspace/, /xcuserdata/, /DerivedData/,
+  /\.claude\//, /CLAUDE\.md/, /\.gitignore/, /\.git\//,
+  /node_modules\//, /\.log$/, /\.DS_Store/,
+]
+const DIFF_INCLUDE_EXT = ['.swift', '.m', '.h', '.mm', '.storyboard', '.xib', '.plist', '.json', '.entitlements', '.metal', '.strings']
+const DIFF_MAX_LINES = 600
+
+function filterDiff(rawDiff) {
+  const sections = rawDiff.split(/^(?=diff --git )/m).filter(s => s.startsWith('diff --git'))
+  const kept = sections.filter(section => {
+    const m = section.match(/^diff --git a\/(.*?) b\//)
+    if (!m) return false
+    const fp = m[1]
+    if (DIFF_EXCLUDE.some(p => p.test(fp))) return false
+    const ext = fp.includes('.') ? '.' + fp.split('.').pop() : ''
+    return DIFF_INCLUDE_EXT.includes(ext)
+  })
+  if (!kept.length) return ''
+  const lines = kept.join('').split('\n')
+  if (lines.length > DIFF_MAX_LINES) {
+    return lines.slice(0, DIFF_MAX_LINES).join('\n') + `\n\\ ... (${lines.length - DIFF_MAX_LINES}줄 생략)`
+  }
+  return kept.join('').trim()
+}
+
 // ── 에이전트 실행 ─────────────────────────────────────────────────────────
 function runAgent(projectKey, projectPath, projectLabel) {
   if (activeAgents[projectKey]?.proc) {
@@ -125,6 +153,10 @@ function runAgent(projectKey, projectPath, projectLabel) {
 
   const runStartTime = new Date().toISOString()
   console.log(`\n📋 [${projectLabel}] 대기 작업 ${tasks.length}개 → 에이전트 실행`)
+
+  // 에이전트 실행 전 HEAD 기록 (diff 범위 계산용)
+  let startHead = null
+  try { startHead = execSync('git rev-parse HEAD', { cwd: projectPath, encoding: 'utf-8' }).trim() } catch {}
 
   const agentState = {
     proc: null,
@@ -252,6 +284,31 @@ function runAgent(projectKey, projectPath, projectLabel) {
         console.log(`📊 토큰: 입력 ${formatTokens(totalInput)}${cacheStr}, 출력 ${formatTokens(tokenUsage.output_tokens)} (총 ${formatTokens(total)})${totalCostUsd != null ? ` · $${totalCostUsd.toFixed(4)}` : ''}`)
         if (updated > 0) console.log(`   ${updated}개 작업에 사용량 기록됨`)
       } catch (e) { console.warn('   토큰 기록 실패:', e.message) }
+    }
+
+    // Git diff 캡처 (커밋된 변경 + 미커밋 변경 모두 포함)
+    if (startHead && code === 0) {
+      try {
+        const committed   = execSync(`git diff ${startHead} HEAD`, { cwd: projectPath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 })
+        const uncommitted = execSync('git diff HEAD', { cwd: projectPath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 })
+        const filtered = filterDiff(committed + uncommitted)
+        if (filtered) {
+          const files = fs.readdirSync(COMPLETED_DIR).filter(f => f.endsWith('.json'))
+          let updated = 0
+          for (const file of files) {
+            const p = path.join(COMPLETED_DIR, file)
+            const task = JSON.parse(fs.readFileSync(p, 'utf-8'))
+            if (task.projectKey === projectKey && task.updated_at >= runStartTime) {
+              const agentDiffs = [...(task.agentDiffs || []), { diff: filtered, capturedAt: new Date().toISOString() }]
+              fs.writeFileSync(p, JSON.stringify({ ...task, agentDiffs }, null, 2))
+              updated++
+            }
+          }
+          if (updated > 0) console.log(`   diff 기록: ${updated}개 작업, ${filtered.split('\n').length}줄`)
+        } else {
+          console.log('   코드 변경 없음 (diff 없음)')
+        }
+      } catch (e) { console.warn('   diff 기록 실패:', e.message) }
     }
 
     if (code === 143 || code === 130) {

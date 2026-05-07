@@ -761,3 +761,85 @@
   max-height: 300px;
   overflow-y: auto;
 }
+
+/* ── Agent Diff ─────────────────────────────────────────── */
+.agent-diff-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.agent-diff-file-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: 6px;
+}
+
+.agent-diff-body {
+  overflow-x: auto;
+}
+
+.agent-diff-file {
+  border-top: 1px solid var(--border-color);
+}
+
+.agent-diff-file:first-child {
+  border-top: none;
+}
+
+.agent-diff-file-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.agent-diff-file-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+.agent-diff-file-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.agent-diff-lines {
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.diff-line {
+  padding: 0 12px;
+  white-space: pre;
+  color: var(--text-primary);
+}
+
+.diff-add {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.diff-del {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.diff-hunk {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .diff-add { background: #14532d; color: #86efac; }
+  .diff-del { background: #450a0a; color: #fca5a5; }
+  .diff-hunk { background: #1e3a5f; color: #93c5fd; }
+}
