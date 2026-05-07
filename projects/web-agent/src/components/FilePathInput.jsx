@@ -47,7 +47,10 @@ function scoreMatch(str, query) {
   return 0
 }
 
-export default function FilePathInput({ value, onChange, placeholder, label, projectPath }) {
+// onChange: 단일 경로 (string)
+// onMultiple: 여러 경로 (string[]) — 제공 시 파일 다중 선택 모드
+// multipleButton: true이면 버튼만 렌더링 (텍스트 입력 없음)
+export default function FilePathInput({ value, onChange, onMultiple, placeholder, label, projectPath, multipleButton }) {
   const [suggestions, setSuggestions] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [highlightIdx, setHighlightIdx] = useState(0)
@@ -58,7 +61,6 @@ export default function FilePathInput({ value, onChange, placeholder, label, pro
   const dropdownRef = useRef(null)
   const cacheRef = useRef(loadCache())
 
-  // 프로젝트 경로에서 기대하는 루트 폴더명 추출 (예: my-ios-project)
   const expectedRoot = projectPath ? projectPath.split('/').filter(Boolean).pop() : null
 
   useEffect(() => {
@@ -78,45 +80,88 @@ export default function FilePathInput({ value, onChange, placeholder, label, pro
     setIndexedRoots([])
   }
 
+  // 캐시에서 파일명으로 경로 찾기
+  const resolveFromCache = (rootName, fileName) => {
+    const cached = cacheRef.current[rootName] || []
+    return cached
+      .filter(p => p === fileName || p.endsWith('/' + fileName))
+      .map(p => `/${rootName}/${p}`)
+  }
+
   const handlePickFile = async () => {
-    if (!('showDirectoryPicker' in window) || !('showOpenFilePicker' in window)) {
+    if (!('showOpenFilePicker' in window)) {
       alert('Chrome / Edge에서만 지원됩니다.')
       return
     }
     setErrorMsg('')
+    setLoading(true)
+
+    const isMultiple = !!onMultiple
+    const rootName = expectedRoot
+    const isCached = rootName && cacheRef.current[rootName]
+
     try {
-      setLoading(true)
+      if (!isCached) {
+        // 최초 1회: 루트 폴더 선택 → 인덱싱 → 파일 선택
+        if (!('showDirectoryPicker' in window)) {
+          alert('Chrome / Edge에서만 지원됩니다.')
+          setLoading(false)
+          return
+        }
+        const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
+        const pickedRoot = dirHandle.name
 
-      // 1단계: 프로젝트 루트 폴더 선택 & 인덱싱
-      const dirHandle = await window.showDirectoryPicker({ mode: 'read' })
-      const rootName = dirHandle.name
+        if (expectedRoot && pickedRoot !== expectedRoot) {
+          setErrorMsg(`"${pickedRoot}"이 아닌 "${expectedRoot}" 폴더를 선택해주세요.`)
+          setLoading(false)
+          return
+        }
 
-      // 선택한 폴더가 프로젝트 루트와 다르면 경고
-      if (expectedRoot && rootName !== expectedRoot) {
+        const files = await collectPaths(dirHandle, '')
+        cacheRef.current = { ...cacheRef.current, [pickedRoot]: files }
+        saveCache(cacheRef.current)
+        setIndexedRoots(Object.keys(cacheRef.current))
+
+        const handles = await window.showOpenFilePicker({ multiple: isMultiple })
+        const results = []
+        for (const fh of handles) {
+          const parts = await dirHandle.resolve(fh)
+          if (parts?.length > 0) results.push(`/${pickedRoot}/${parts.join('/')}`)
+        }
+
         setLoading(false)
-        setErrorMsg(`"${rootName}"이 아닌 "${expectedRoot}" 폴더를 선택해주세요.`)
+        if (results.length === 0) {
+          setErrorMsg(`선택한 파일이 "${pickedRoot}" 폴더 안에 없습니다.`)
+          return
+        }
+        if (isMultiple) onMultiple(results)
+        else onChange(results[0])
         return
       }
 
-      const files = await collectPaths(dirHandle, '')
-      const cache = cacheRef.current
-      cache[rootName] = files
-      cacheRef.current = cache
-      saveCache(cache)
-      setIndexedRoots(Object.keys(cache))
-      setLoading(false)
+      // 이미 인덱싱됨: 파일만 선택 (폴더 picker 생략)
+      const handles = await window.showOpenFilePicker({ multiple: isMultiple })
+      const results = []
 
-      // 2단계: 파일 선택
-      const [fileHandle] = await window.showOpenFilePicker({ multiple: false })
+      for (const fh of handles) {
+        const fileName = fh.name
+        const matches = resolveFromCache(rootName, fileName)
 
-      // dirHandle.resolve()로 dirHandle 기준 정확한 상대 경로 획득
-      const parts = await dirHandle.resolve(fileHandle)
-      if (parts && parts.length > 0) {
-        onChange(`/${rootName}/${parts.join('/')}`)
-        setErrorMsg('')
-      } else {
-        setErrorMsg(`선택한 파일이 "${rootName}" 폴더 안에 없습니다. 같은 폴더 내 파일을 선택해주세요.`)
+        if (matches.length === 1) {
+          results.push(matches[0])
+        } else if (matches.length > 1) {
+          // 동일 파일명이 여러 곳에 있으면 드롭다운으로 선택
+          setSuggestions(matches)
+          setShowDropdown(true)
+        } else {
+          setErrorMsg(`"${fileName}"을 캐시에서 찾을 수 없습니다. 캐시 초기화 후 다시 시도해주세요.`)
+        }
       }
+
+      setLoading(false)
+      if (results.length === 0) return
+      if (isMultiple) onMultiple(results)
+      else onChange(results[0])
 
     } catch (e) {
       if (e.name !== 'AbortError') console.error(e)
@@ -176,11 +221,28 @@ export default function FilePathInput({ value, onChange, placeholder, label, pro
     dropdownRef.current?.querySelector('.suggestion-item.highlighted')?.scrollIntoView({ block: 'nearest' })
   }, [highlightIdx])
 
+  const isCached = expectedRoot && indexedRoots.includes(expectedRoot)
+
+  // 버튼 전용 모드 (여러 파일 선택용)
+  if (multipleButton) {
+    return (
+      <button
+        type="button"
+        className="browse-btn browse-btn-multiple"
+        onClick={handlePickFile}
+        disabled={loading}
+        title={isCached ? '여러 파일 한번에 선택' : `1) ${expectedRoot ?? '프로젝트'} 폴더 선택 → 2) 파일 여러 개 선택`}
+      >
+        {loading ? <span className="browse-spinner" /> : '+ 여러 파일 선택'}
+      </button>
+    )
+  }
+
   return (
     <div className="filepath-input-wrap">
       {label && <label>{label}</label>}
       <div className="filepath-field">
-        {expectedRoot && (
+        {expectedRoot && !isCached && (
           <div className="filepath-root-hint">
             폴더 선택 시 <strong>{expectedRoot}</strong> 루트 폴더를 선택하세요
           </div>
@@ -202,9 +264,9 @@ export default function FilePathInput({ value, onChange, placeholder, label, pro
             className="browse-btn"
             onClick={handlePickFile}
             disabled={loading}
-            title={expectedRoot ? `1) ${expectedRoot} 루트 폴더 선택 → 2) 파일 선택` : '프로젝트 폴더 선택 후 파일 지정'}
+            title={isCached ? '파일 선택 (폴더 재선택 불필요)' : `1) ${expectedRoot ?? '프로젝트'} 폴더 선택 → 2) 파일 선택`}
           >
-            {loading ? <span className="browse-spinner" /> : '파일 선택'}
+            {loading ? <span className="browse-spinner" /> : (isCached ? '파일 선택' : '폴더 · 파일 선택')}
           </button>
         </div>
 

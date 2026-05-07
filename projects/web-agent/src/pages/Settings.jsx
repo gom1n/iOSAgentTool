@@ -163,7 +163,6 @@ export default function Settings() {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [screenMenuIdx, setScreenMenuIdx] = useState(null)
   const screenMenuRef = useRef(null)
-  const [summarizing, setSummarizing] = useState(false)
   const [specContent, setSpecContent] = useState('')   // 현재 편집 중 첨부된 스펙 내용 (저장 안 됨)
   const [specDragging, setSpecDragging] = useState(false)
 
@@ -388,34 +387,7 @@ export default function Settings() {
     localStorage.setItem('acc_screens', JSON.stringify(updated))
   }
 
-  const handleSummarize = async () => {
-    const firstFile = screenForm.files?.[0]
-    if (!firstFile?.filePath || !screenForm.projectPath) return
-    const fullPath = computeFileFullPath(firstFile.filePath, screenForm.projectPath)
-    setSummarizing(true)
-    try {
-      const res = await fetch('/api/summarize-screen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: fullPath }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        alert(`요약 실패: ${data.error}`)
-        return
-      }
-      setScreenForm(f => ({
-        ...f,
-        description: data.description || f.description,
-        features: data.features || f.features,
-        notes: data.notes || f.notes,
-      }))
-    } catch (e) {
-      alert(`오류: ${e.message}`)
-    } finally {
-      setSummarizing(false)
-    }
-  }
+
 
   const SCREENS_BASE = systemPaths?.screensBase || ''
   const guideFiles = systemPaths?.guideFiles || {}
@@ -629,28 +601,35 @@ export default function Settings() {
                         )}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className="file-list-add"
-                      onClick={() => setScreenForm(f => ({ ...f, files: [...(f.files.length === 0 ? [EMPTY_FILE_ENTRY] : f.files), { ...EMPTY_FILE_ENTRY }] }))}
-                    >
-                      + 파일 추가
-                    </button>
+                    <div className="file-list-actions">
+                      <button
+                        type="button"
+                        className="file-list-add"
+                        onClick={() => setScreenForm(f => ({ ...f, files: [...(f.files.length === 0 ? [EMPTY_FILE_ENTRY] : f.files), { ...EMPTY_FILE_ENTRY }] }))}
+                      >
+                        + 파일 추가
+                      </button>
+                      <FilePathInput
+                        label={null}
+                        value=""
+                        onChange={() => {}}
+                        onMultiple={paths => {
+                          const newEntries = paths.map(p => ({ filePath: p, className: extractClassName(p) }))
+                          setScreenForm(f => {
+                            const existing = f.files.filter(e => e.filePath)
+                            return { ...f, files: [...existing, ...newEntries] }
+                          })
+                        }}
+                        placeholder=""
+                        projectPath={screenForm.projectPath}
+                        multipleButton
+                      />
+                    </div>
                   </div>
                 </div>}
 
                 <div className="screen-form-divider">
                   <span>에이전트 가이드</span>
-                  {screenForm.platform === 'iOS' && screenForm.files?.[0]?.filePath && screenForm.projectPath && (
-                    <button
-                      type="button"
-                      className="btn-summarize"
-                      onClick={handleSummarize}
-                      disabled={summarizing}
-                    >
-                      {summarizing ? '요약 중...' : '✦ AI 요약'}
-                    </button>
-                  )}
                 </div>
 
                 {/* Row 4: 화면 설명 */}

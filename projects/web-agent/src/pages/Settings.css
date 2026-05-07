@@ -524,28 +524,6 @@
   background: var(--border-color);
 }
 
-.btn-summarize {
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #7c3aed;
-  background: #f3e8ff;
-  border: 1px solid #ddd6fe;
-  border-radius: 20px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-  flex-shrink: 0;
-}
-
-.btn-summarize:hover:not(:disabled) {
-  background: #ede9fe;
-}
-
-.btn-summarize:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
 
 /* Multi-file list */
 .file-list {
@@ -601,6 +579,12 @@
 }
 
 .file-list-remove:hover { color: #ef4444; }
+
+.file-list-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 
 .file-list-add {
   align-self: flex-start;
