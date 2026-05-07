@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MdMap, MdMenuBook, MdAltRoute, MdAdd, MdFolder } from 'react-icons/md'
+import { MdMap, MdMenuBook, MdAdd, MdFolder } from 'react-icons/md'
 import './Settings.css'
 import FilePathInput from '../components/FilePathInput'
 import TourOverlay from '../components/TourOverlay'
@@ -7,7 +7,7 @@ import usePageTour from '../hooks/usePageTour'
 
 const TOUR_STEPS = [
   { title: '설정', desc: '에이전트가 작동하기 위한 기본 정보를 등록합니다.\n처음 사용 시 프로젝트 탭부터 시작하세요.', target: null },
-  { title: '화면 매핑 탭', desc: 'iOS 화면(컴포넌트)과 코드 파일을 연결합니다.\n에이전트가 어떤 파일을 수정해야 하는지 파악하는 데 사용됩니다.', target: '[data-tour="tab-mapping"]' },
+  { title: '화면 매핑 탭', desc: 'iOS 스크린과 코드 파일을 연결합니다.\n에이전트가 어떤 파일을 수정해야 하는지 파악하는 데 사용됩니다.', target: '[data-tour="tab-mapping"]' },
   { title: '프로젝트 탭', desc: 'iOS 프로젝트 경로와 빌드 스킴을 등록합니다.\n경로를 입력하면 실시간으로 유효성을 검증합니다.', target: '[data-tour="tab-projects"]' },
   { title: '가이드 탭', desc: '에이전트의 행동 지침을 편집합니다.\nMaster 가이드와 iOS 에이전트 CLAUDE.md를 직접 수정할 수 있습니다.', target: '[data-tour="tab-guide"]' },
 ]
@@ -179,9 +179,6 @@ export default function Settings() {
   const [editSchemeIdx, setEditSchemeIdx] = useState(null)
   const [schemeForm, setSchemeForm] = useState({ name: '', configuration: '', destination: 'generic/platform=iOS' })
 
-  const [branches, setBranches]       = useState({})      // { projectLabel: ['branch1', ...] }
-  const [newBranch, setNewBranch]     = useState({})      // { projectLabel: 'input value' }
-
   const [masterGuide, setMasterGuide] = useState(DEFAULT_MASTER)
 
   const [iosGuide, setIosGuide] = useState(DEFAULT_IOS_GUIDE)
@@ -256,9 +253,6 @@ export default function Settings() {
         body: JSON.stringify({ projects: loaded }),
       }).catch(() => {})
     }
-    const storedBranches = localStorage.getItem('acc_branches')
-    if (storedBranches) setBranches(JSON.parse(storedBranches))
-
     fetch('/api/system-paths')
       .then(r => r.json())
       .then(paths => {
@@ -363,25 +357,6 @@ export default function Settings() {
     saveProjects(updated)
   }
 
-  const saveBranches = (updated) => {
-    setBranches(updated)
-    localStorage.setItem('acc_branches', JSON.stringify(updated))
-  }
-
-  const addBranch = (projectLabel) => {
-    const val = (newBranch[projectLabel] || '').trim()
-    if (!val) return
-    const list = branches[projectLabel] || []
-    if (list.includes(val)) return
-    saveBranches({ ...branches, [projectLabel]: [...list, val] })
-    setNewBranch(b => ({ ...b, [projectLabel]: '' }))
-  }
-
-  const removeBranch = (projectLabel, idx) => {
-    const list = (branches[projectLabel] || []).filter((_, i) => i !== idx)
-    saveBranches({ ...branches, [projectLabel]: list })
-  }
-
   const saveScreens = (updated) => {
     setScreens(updated)
     localStorage.setItem('acc_screens', JSON.stringify(updated))
@@ -482,13 +457,10 @@ export default function Settings() {
 
       <div className="tabs">
         <button data-tour="tab-mapping" className={`tab-btn ${activeTab === 'mapping' ? 'active' : ''}`} onClick={() => setActiveTab('mapping')}>
-          <MdMap size={15} /> 컴포넌트 매핑
+          <MdMap size={15} /> 스크린 매핑
         </button>
         <button data-tour="tab-projects" className={`tab-btn ${activeTab === 'projects' ? 'active' : ''}`} onClick={() => setActiveTab('projects')}>
           <MdFolder size={15} /> 프로젝트
-        </button>
-        <button className={`tab-btn ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
-          <MdAltRoute size={15} /> 브랜치
         </button>
         <button data-tour="tab-guide" className={`tab-btn ${activeTab === 'guide' ? 'active' : ''}`} onClick={() => setActiveTab('guide')}>
           <MdMenuBook size={15} /> 가이드
@@ -499,12 +471,12 @@ export default function Settings() {
         <div className="tab-content">
           <div className="section-header">
             <div>
-              <h2>컴포넌트 ID 매핑</h2>
-              <p className="section-desc">컴포넌트 ID와 코드 위치를 연결합니다</p>
+              <h2>스크린 ID 매핑</h2>
+              <p className="section-desc">스크린 ID와 코드 위치를 연결합니다</p>
             </div>
             {!showScreenForm && (
               <button className="btn-primary" onClick={() => { setShowScreenForm(true); setEditScreen(null); setScreenForm(DEFAULT_SCREEN) }}>
-                + 컴포넌트 추가
+                + 스크린 추가
               </button>
             )}
           </div>
@@ -512,13 +484,13 @@ export default function Settings() {
           {showScreenForm && (
             <div className="form-card">
               <div className="form-card-header">
-                <h3>{editScreen !== null ? '컴포넌트 수정' : '새 컴포넌트 추가'}</h3>
+                <h3>{editScreen !== null ? '스크린 수정' : '새 스크린 추가'}</h3>
               </div>
               <form onSubmit={handleScreenSubmit} className="screen-form">
-                {/* Row 1: 컴포넌트 ID / 이름 / 플랫폼 */}
+                {/* Row 1: 스크린 ID / 이름 / 플랫폼 */}
                 <div className="form-row">
                   <div className="form-group">
-                    <label>컴포넌트 ID <span className="required-mark">*</span></label>
+                    <label>스크린 ID <span className="required-mark">*</span></label>
                     <input
                       type="text"
                       placeholder="MONITORING_IOS_AGENT"
@@ -528,7 +500,7 @@ export default function Settings() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>컴포넌트 이름 <span className="optional-mark">선택</span></label>
+                    <label>스크린 이름 <span className="optional-mark">선택</span></label>
                     <input
                       type="text"
                       placeholder="개방플랫폼 분기"
@@ -788,14 +760,14 @@ export default function Settings() {
               .filter(({ s }) => s.platform === 'iOS')
               .filter(({ s }) => projectFilter === '전체' || s.projectKey === projectFilter)
             return filteredScreens.length === 0 ? (
-              <div className="screen-platform-empty">등록된 컴포넌트 없음</div>
+              <div className="screen-platform-empty">등록된 스크린 없음</div>
             ) : (
               <div className="screen-table-wrap">
                 <table className="screen-table">
                   <thead>
                     <tr>
-                      <th>컴포넌트 ID</th>
-                      <th>컴포넌트 이름</th>
+                      <th>스크린 ID</th>
+                      <th>스크린 이름</th>
                       <th>프로젝트</th>
                       <th></th>
                     </tr>
@@ -1030,53 +1002,6 @@ export default function Settings() {
                 ? <span className="migrate-ok">✓ {migrateResult.total}개 중 {migrateResult.added}개 추가됨 (중복 {migrateResult.total - migrateResult.added}개 제외)</span>
                 : <span className="migrate-err">오류가 발생했습니다. 서버가 실행 중인지 확인하세요.</span>
             )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'branches' && (
-        <div className="tab-content">
-          <div className="section-header">
-            <div>
-              <h2>브랜치 관리</h2>
-              <p className="section-desc">프로젝트별로 사용하는 브랜치를 등록합니다</p>
-            </div>
-          </div>
-          <div className="branch-projects">
-            {projects.map(project => (
-              <div key={project.path} className="branch-project-card">
-                <div className="branch-project-header">
-                  <span className="branch-project-label">{project.label}</span>
-                  <code className="branch-project-path">{project.path.split('/').pop()}</code>
-                </div>
-                <div className="branch-list">
-                  {(branches[project.label] || []).length === 0 ? (
-                    <p className="branch-empty">등록된 브랜치 없음</p>
-                  ) : (
-                    (branches[project.label] || []).map((branch, i) => (
-                      <div key={i} className="branch-item">
-                        <MdAltRoute size={13} className="branch-icon" />
-                        <span className="branch-name">{branch}</span>
-                        <button className="branch-remove" onClick={() => removeBranch(project.label, i)}>×</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="add-branch-row">
-                  <input
-                    type="text"
-                    className="add-branch-input"
-                    placeholder="브랜치명 입력 (예: feature/qr-coupon)"
-                    value={newBranch[project.label] || ''}
-                    onChange={e => setNewBranch(b => ({ ...b, [project.label]: e.target.value }))}
-                    onKeyDown={e => e.key === 'Enter' && addBranch(project.label)}
-                  />
-                  <button className="add-branch-btn" onClick={() => addBranch(project.label)}>
-                    <MdAdd size={15} /> 추가
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}

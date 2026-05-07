@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MdBarChart, MdChecklist, MdSettings, MdChangeHistory, MdRefresh, MdSmartToy } from 'react-icons/md'
+import { MdBarChart, MdChecklist, MdSettings, MdChangeHistory, MdRefresh, MdSmartToy, MdRocketLaunch, MdAutoAwesome, MdPets, MdBolt, MdLocalFireDepartment, MdCelebration, MdEmojiEmotions } from 'react-icons/md'
 import './Sidebar.css'
 
 const navItems = [
@@ -31,17 +31,86 @@ function formatResetsAt(isoStr, key) {
 }
 
 const LOGO_STORAGE_KEY = 'acc_logo_title'
+const LOGO_ICON_KEY = 'acc_logo_icon'
 const DEFAULT_TITLE = 'Agent System'
+const DEFAULT_ICON = 'MdChangeHistory'
+
+const ICON_OPTIONS = [
+  { key: 'MdChangeHistory',       Icon: MdChangeHistory,       label: '기본' },
+  { key: 'MdRocketLaunch',        Icon: MdRocketLaunch,        label: '로켓' },
+  { key: 'MdAutoAwesome',         Icon: MdAutoAwesome,         label: '반짝이' },
+  { key: 'MdPets',                Icon: MdPets,                label: '발바닥' },
+  { key: 'MdBolt',                Icon: MdBolt,                label: '번개' },
+  { key: 'MdLocalFireDepartment', Icon: MdLocalFireDepartment, label: '불꽃' },
+  { key: 'MdSmartToy',            Icon: MdSmartToy,            label: '로봇' },
+  { key: 'MdCelebration',         Icon: MdCelebration,         label: '파티' },
+  { key: 'MdEmojiEmotions',       Icon: MdEmojiEmotions,       label: '이모지' },
+]
+const SIDEBAR_WIDTH_KEY = 'acc_sidebar_width'
+const DEFAULT_WIDTH = 220
+const MIN_WIDTH = 160
+const MAX_WIDTH = 400
 
 export default function Sidebar({ activePage, onNavigate, onStartTour }) {
   const [systemOk, setSystemOk] = useState(true)
   const [usage, setUsage] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [logoTitle, setLogoTitle] = useState(() => localStorage.getItem(LOGO_STORAGE_KEY) || DEFAULT_TITLE)
+  const [logoIconKey, setLogoIconKey] = useState(() => localStorage.getItem(LOGO_ICON_KEY) || DEFAULT_ICON)
   const [editingLogo, setEditingLogo] = useState(false)
+  const [showIconPicker, setShowIconPicker] = useState(false)
   const [logoInput, setLogoInput] = useState('')
   const logoInputRef = useRef(null)
   const clickTimerRef = useRef(null)
+
+  const LogoIcon = ICON_OPTIONS.find(o => o.key === logoIconKey)?.Icon ?? MdChangeHistory
+
+  const handleIconSelect = (key) => {
+    setLogoIconKey(key)
+    localStorage.setItem(LOGO_ICON_KEY, key)
+    setShowIconPicker(false)
+  }
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    return isNaN(saved) ? DEFAULT_WIDTH : saved
+  })
+  const isResizing = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+  const currentWidthRef = useRef(sidebarWidth)
+
+  useEffect(() => { currentWidthRef.current = sidebarWidth }, [sidebarWidth])
+
+  const handleResizerMouseDown = (e) => {
+    isResizing.current = true
+    startX.current = e.clientX
+    startWidth.current = currentWidthRef.current
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!isResizing.current) return
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + e.clientX - startX.current))
+      setSidebarWidth(newWidth)
+    }
+    const onMouseUp = () => {
+      if (!isResizing.current) return
+      isResizing.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentWidthRef.current))
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -104,9 +173,25 @@ export default function Sidebar({ activePage, onNavigate, onStartTour }) {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width: sidebarWidth }}>
       <div className="sidebar-logo" onClick={handleLogoClick} style={{ cursor: 'pointer' }}>
-        <MdChangeHistory className="logo-icon" />
+        <div className="logo-icon-wrap" onClick={e => { e.stopPropagation(); setShowIconPicker(v => !v) }} title="아이콘 변경">
+          <LogoIcon className="logo-icon" />
+          {showIconPicker && (
+            <div className="logo-icon-picker">
+              {ICON_OPTIONS.map(({ key, Icon, label }) => (
+                <button
+                  key={key}
+                  className={`logo-icon-option ${logoIconKey === key ? 'active' : ''}`}
+                  onClick={e => { e.stopPropagation(); handleIconSelect(key) }}
+                  title={label}
+                >
+                  <Icon size={18} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {editingLogo ? (
           <input
             ref={logoInputRef}
@@ -178,6 +263,7 @@ export default function Sidebar({ activePage, onNavigate, onStartTour }) {
           <button className="tour-trigger-btn" onClick={onStartTour} title="투어 다시 보기">?</button>
         </div>
       </div>
+      <div className="sidebar-resizer" onMouseDown={handleResizerMouseDown} />
     </aside>
   )
 }

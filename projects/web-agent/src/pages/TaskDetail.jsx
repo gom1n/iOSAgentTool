@@ -251,7 +251,9 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
             <span className={`platform-badge ${task.platform?.toLowerCase()}`}>{task.platform}</span>
             <h1 className="detail-title">{task.title}</h1>
           </div>
-          {task.screenId && <span className="detail-screen-id">{task.screenId}</span>}
+          {(task.screenIds?.length ? task.screenIds : task.screenId ? [task.screenId] : []).map(id => (
+              <span key={id} className="detail-screen-id">{id}</span>
+            ))}
         </div>
         <div className="detail-status-wrap">
           <select

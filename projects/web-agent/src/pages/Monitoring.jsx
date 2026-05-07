@@ -5,6 +5,7 @@ import {
 import TourOverlay from '../components/TourOverlay'
 import usePageTour from '../hooks/usePageTour'
 import TaskHistoryChart from '../components/TaskHistoryChart'
+import TokenUsageChart from '../components/TokenUsageChart'
 import './Monitoring.css'
 
 const TOUR_STEPS = [
@@ -158,6 +159,9 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
       {/* History Chart */}
       <TaskHistoryChart />
 
+      {/* Token Usage Chart */}
+      <TokenUsageChart />
+
       {/* Bottom: Recent Tasks + Activity Log */}
       <div className="bottom-grid">
         <div className="card recent-tasks" data-tour="recent-tasks">
@@ -189,7 +193,9 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
                             </span>
                           )
                         })()}
-                        {task.screenId && <span className="screen-id">{task.screenId}</span>}
+                        {(task.screenIds?.length ? task.screenIds : task.screenId ? [task.screenId] : []).map(id => (
+                            <span key={id} className="screen-id">{id}</span>
+                          ))}
                       </span>
                     </div>
                   </div>

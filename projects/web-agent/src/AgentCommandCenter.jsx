@@ -50,9 +50,10 @@ export default function AgentCommandCenter() {
           const statusChanged = ft && ft.status !== t.status
           const summaryChanged = ft && ft.agentSummary && ft.agentSummary !== t.agentSummary
           const reportsChanged = ft && ft.agentReports && JSON.stringify(ft.agentReports) !== JSON.stringify(t.agentReports)
-          if (statusChanged || summaryChanged || reportsChanged) {
+          const diffsChanged = ft && ft.agentDiffs && JSON.stringify(ft.agentDiffs) !== JSON.stringify(t.agentDiffs)
+          if (statusChanged || summaryChanged || reportsChanged || diffsChanged) {
             changed = true
-            return { ...t, status: ft.status, agentSummary: ft.agentSummary || t.agentSummary, agentReports: ft.agentReports || t.agentReports, updated_at: ft.updated_at || t.updated_at }
+            return { ...t, status: ft.status, agentSummary: ft.agentSummary || t.agentSummary, agentReports: ft.agentReports || t.agentReports, agentDiffs: ft.agentDiffs || t.agentDiffs, updated_at: ft.updated_at || t.updated_at }
           }
           return t
         })

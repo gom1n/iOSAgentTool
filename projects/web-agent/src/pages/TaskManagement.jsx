@@ -46,13 +46,14 @@ function loadScreens() {
   return [{ id: 'CHECK_BREAKDOWN_02', name: '개방플랫폼 분기', platform: 'iOS' }]
 }
 
-const EMPTY_FORM = { title: '', platform: 'iOS', screenId: '', description: '', requirements: '', projectKey: '', projectPath: '', scheme: '' }
+const EMPTY_FORM = { title: '', platform: 'iOS', screenIds: [], description: '', requirements: '', projectKey: '', projectPath: '', scheme: '' }
 
 export default function TaskManagement({ onOpenTask, platformFilter }) {
   const [tasks, setTasks]       = useState([])
   const [screens, setScreens]   = useState([])
   const [projects, setProjects] = useState([])
-  const [filter, setFilter]     = useState('전체')
+  const [filter, setFilter]         = useState('전체')
+  const [projectFilter, setProjectFilter] = useState('전체')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId]     = useState(null)
   const [form, setForm]         = useState(EMPTY_FORM)
@@ -109,7 +110,7 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
       syncQ('PATCH', updated.find(t => t.id === editId))
       setEditId(null)
     } else {
-      const task = { id: generateId(), ...form, requirements: reqs, status: 'pending', created_at: new Date().toISOString() }
+      const task = { id: generateId(), ...form, screenId: form.screenIds[0] || '', requirements: reqs, status: 'pending', created_at: new Date().toISOString() }
       saveTasks([...tasks, task])
       addLog(`새 작업 생성: "${form.title}" (${form.platform})`, 'success')
       syncQ('POST', task)
@@ -119,9 +120,12 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   }
 
   const handleEdit = (task) => {
+    const screenIds = task.screenIds?.length
+      ? task.screenIds
+      : task.screenId ? [task.screenId] : []
     setForm({
       title: task.title, platform: task.platform,
-      screenId: task.screenId || '', description: task.description || '',
+      screenIds, description: task.description || '',
       requirements: Array.isArray(task.requirements) ? task.requirements.join('\n') : (task.requirements || ''),
       projectKey: task.projectKey || '', projectPath: task.projectPath || '',
       scheme: task.scheme || '',
@@ -169,7 +173,11 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   }
 
   // platformFilter: Monitoring에서 플랫폼 클릭 시 진입
-  const baseTasks = platformFilter ? tasks.filter(t => t.platform === platformFilter) : tasks
+  const projectKeys = ['전체', ...Array.from(new Set(tasks.map(t => t.projectKey).filter(Boolean)))]
+
+  const baseTasks = tasks
+    .filter(t => !platformFilter || t.platform === platformFilter)
+    .filter(t => projectFilter === '전체' || t.projectKey === projectFilter)
 
   const sortedTasks = [...(filter === '전체' ? baseTasks : baseTasks.filter(t => t.status === filter))]
     .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))
@@ -240,18 +248,42 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                 )
               })()}
 
-            <div className="form-row">
-              <div className="form-group flex-2">
-                <label>컴포넌트 ID 선택</label>
-                <select value={form.screenId} onChange={e => setForm(f => ({ ...f, screenId: e.target.value }))}>
-                  <option value="">선택 안 함</option>
-                  {screens.map(s => <option key={s.id} value={s.id}>{s.id} — {s.name}</option>)}
+            <div className="form-group">
+              <label>스크린 ID</label>
+              {form.screenIds.length > 0 && (
+                <div className="screen-id-tags">
+                  {form.screenIds.map(id => (
+                    <span key={id} className="screen-id-tag">
+                      {id}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, screenIds: f.screenIds.filter(s => s !== id) }))}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="screen-id-add-row">
+                <select
+                  value=""
+                  onChange={e => {
+                    const val = e.target.value
+                    if (val && !form.screenIds.includes(val)) setForm(f => ({ ...f, screenIds: [...f.screenIds, val] }))
+                  }}
+                >
+                  <option value="">목록에서 선택...</option>
+                  {screens.filter(s => !form.screenIds.includes(s.id)).map(s => (
+                    <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
+                  ))}
                 </select>
-              </div>
-              <div className="form-group flex-2">
-                <label>컴포넌트 ID 직접 입력</label>
-                <input type="text" placeholder="CHECK_BREAKDOWN_02" value={form.screenId}
-                  onChange={e => setForm(f => ({ ...f, screenId: e.target.value }))} />
+                <input
+                  type="text"
+                  placeholder="직접 입력 후 Enter"
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    const val = e.target.value.trim()
+                    if (val && !form.screenIds.includes(val)) setForm(f => ({ ...f, screenIds: [...f.screenIds, val] }))
+                    e.target.value = ''
+                  }}
+                />
               </div>
             </div>
             <div className="form-group">
@@ -279,6 +311,30 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
             <span className="filter-count">{s === '전체' ? tasks.length : tasks.filter(t => t.status === s).length}</span>
           </button>
         ))}
+        {projectKeys.length > 1 && (
+          <>
+            <div className="filter-bar-sep" />
+            {projectKeys.map(key => {
+              const proj = projects.find(p => p.label === key)
+              const color = proj?.color || '#6b7280'
+              const isActive = projectFilter === key
+              return (
+                <button
+                  key={key}
+                  className={`filter-btn ${isActive ? 'active' : ''}`}
+                  style={key !== '전체' && isActive ? { background: color + '22', color, borderColor: color + '55' } : {}}
+                  onClick={() => setProjectFilter(key)}
+                >
+                  {key !== '전체' && <span className="filter-project-dot" style={{ background: color }} />}
+                  {key}
+                  <span className="filter-count">
+                    {key === '전체' ? tasks.length : tasks.filter(t => t.projectKey === key).length}
+                  </span>
+                </button>
+              )
+            })}
+          </>
+        )}
       </div>
 
       {sortedTasks.length === 0 ? (
@@ -309,7 +365,9 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                       </span>
                     )
                   })()}
-                  {task.screenId && <span className="screen-id-badge">{task.screenId}</span>}
+                  {(task.screenIds?.length ? task.screenIds : task.screenId ? [task.screenId] : []).map(id => (
+                    <span key={id} className="screen-id-badge">{id}</span>
+                  ))}
                   {task.scheme && <span className="scheme-badge">{task.scheme}</span>}
                 </div>
                 <div className="task-card-actions">

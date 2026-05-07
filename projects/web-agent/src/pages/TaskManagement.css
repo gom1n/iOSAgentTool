@@ -162,6 +162,20 @@
   background: var(--bg-secondary);
 }
 
+.filter-bar-sep {
+  width: 1px;
+  background: var(--border-color);
+  align-self: stretch;
+  margin: 0 4px;
+}
+
+.filter-project-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Task List */
 .task-list {
   display: flex;
@@ -222,6 +236,55 @@
   background: var(--bg-secondary);
   padding: 2px 8px;
   border-radius: 4px;
+}
+
+.screen-id-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.screen-id-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-family: monospace;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 5px;
+  padding: 3px 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .screen-id-tag {
+    background: #1e3a5f;
+    color: #93c5fd;
+  }
+}
+
+.screen-id-tag button {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+
+.screen-id-tag button:hover { opacity: 1; }
+
+.screen-id-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.screen-id-add-row select,
+.screen-id-add-row input {
+  flex: 1;
 }
 
 .scheme-badge {
