@@ -388,14 +388,34 @@ export function taskSyncPlugin() {
         }))
       })
 
-      // GET /api/agent-status — 워처에서 iOS 에이전트 실행 상태 조회
+      // GET /api/agent-status — 전체 프로젝트 에이전트 상태
       server.middlewares.use('/api/agent-status', (req, res) => {
         res.setHeader('Content-Type', 'application/json')
-        if (req.method !== 'GET') {
-          res.writeHead(405)
-          return res.end(JSON.stringify({ error: 'method not allowed' }))
-        }
+        if (req.method !== 'GET') { res.writeHead(405); return res.end(JSON.stringify({ error: 'method not allowed' })) }
         proxyToWatcher(IOS_WATCHER_PORT, '/status', 'GET', res, '워처 서버가 실행되지 않았습니다. (ios-watcher.js 확인)')
+      })
+
+      // GET /api/agent-logs?project=X — 특정 프로젝트 에이전트 로그
+      server.middlewares.use('/api/agent-logs', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'GET') { res.writeHead(405); return res.end(JSON.stringify({ error: 'method not allowed' })) }
+        const qs = req.url?.split('?')[1] || ''
+        const project = decodeURIComponent((qs.match(/(?:^|&)project=([^&]*)/) || [])[1] || '')
+        proxyToWatcher(IOS_WATCHER_PORT, `/logs?project=${encodeURIComponent(project)}`, 'GET', res, '워처 서버 연결 실패')
+      })
+
+      // POST /api/agent-session-reset — 세션 초기화
+      server.middlewares.use('/api/agent-session-reset', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.writeHead(405); return res.end(JSON.stringify({ error: 'method not allowed' })) }
+        const body = await readBody(req)
+        const proxyReq = http.request(
+          { hostname: 'localhost', port: IOS_WATCHER_PORT, path: '/session-reset', method: 'POST', headers: { 'Content-Type': 'application/json' } },
+          (r) => { let d = ''; r.on('data', c => (d += c)); r.on('end', () => res.end(d)) }
+        )
+        proxyReq.on('error', () => { res.writeHead(503); res.end(JSON.stringify({ error: '워처 서버 연결 실패' })) })
+        proxyReq.write(JSON.stringify(body))
+        proxyReq.end()
       })
 
       // GET /api/claude-usage — Claude 사용량 조회
@@ -414,34 +434,56 @@ export function taskSyncPlugin() {
         }
       })
 
-      // POST /api/stop-agent — 워처에 iOS 에이전트 중단 요청
-      server.middlewares.use('/api/stop-agent', (req, res) => {
+      // POST /api/stop-agent — 특정 프로젝트 에이전트 중단 { project }
+      server.middlewares.use('/api/stop-agent', async (req, res) => {
         res.setHeader('Content-Type', 'application/json')
-        if (req.method !== 'POST') {
-          res.writeHead(405)
-          return res.end(JSON.stringify({ error: 'method not allowed' }))
-        }
+        if (req.method !== 'POST') { res.writeHead(405); return res.end(JSON.stringify({ error: 'method not allowed' })) }
+        const body = await readBody(req)
         const proxyReq = http.request(
-          { hostname: 'localhost', port: IOS_WATCHER_PORT, path: '/stop', method: 'POST' },
+          { hostname: 'localhost', port: IOS_WATCHER_PORT, path: '/stop', method: 'POST', headers: { 'Content-Type': 'application/json' } },
           (r) => {
             let data = ''
             r.on('data', chunk => (data += chunk))
             r.on('end', () => {
               try {
                 const result = JSON.parse(data)
-                if (result.ok) {
-                  appendActivityLog({ agent: 'ios', type: 'stopped', message: 'iOS 에이전트 강제 중단됨' })
-                }
+                if (result.ok) appendActivityLog({ agent: 'ios', type: 'stopped', message: `[${body.project}] 에이전트 강제 중단됨` })
               } catch {}
               res.end(data)
             })
           }
         )
-        proxyReq.on('error', () => {
-          res.writeHead(503)
-          res.end(JSON.stringify({ error: '워처 서버가 실행되지 않았습니다. (ios-watcher.js 확인)' }))
-        })
+        proxyReq.on('error', () => { res.writeHead(503); res.end(JSON.stringify({ error: '워처 서버가 실행되지 않았습니다.' })) })
+        proxyReq.write(JSON.stringify(body))
         proxyReq.end()
+      })
+
+      // GET/POST /api/projects — shared/projects.json 동기화
+      const PROJECTS_FILE = join(ROOT, 'shared/projects.json')
+      server.middlewares.use('/api/projects', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        if (req.method === 'GET') {
+          try {
+            const data = existsSync(PROJECTS_FILE) ? readFileSync(PROJECTS_FILE, 'utf-8') : '[]'
+            return res.end(data)
+          } catch (e) {
+            res.writeHead(500)
+            return res.end(JSON.stringify({ error: e.message }))
+          }
+        }
+        if (req.method === 'POST') {
+          try {
+            const { projects } = await readBody(req)
+            writeFileSync(PROJECTS_FILE, JSON.stringify(projects, null, 2))
+            return res.end(JSON.stringify({ ok: true }))
+          } catch (e) {
+            res.writeHead(500)
+            return res.end(JSON.stringify({ error: e.message }))
+          }
+        }
+        res.writeHead(405)
+        res.end(JSON.stringify({ error: 'method not allowed' }))
       })
 
       // GET /api/git-diff?projectPath=... — git diff 조회
@@ -458,6 +500,53 @@ export function taskSyncPlugin() {
         exec(`git -C "${projectPath}" diff HEAD`, { maxBuffer: 2 * 1024 * 1024 }, (_, stdout) => {
           res.end(JSON.stringify({ diff: stdout || '' }))
         })
+      })
+
+      // ── Xcode 프로젝트 파일 탐색 ──────────────────────────
+      // 1) path 자체가 .xcworkspace/.xcodeproj
+      // 2) path 바로 아래에 존재
+      // 3) path 한 단계 하위 폴더에 존재
+      function findXcodeProject(basePath) {
+        const isWs   = p => p.endsWith('.xcworkspace') && !p.includes('project.xcworkspace')
+        const isProj = p => p.endsWith('.xcodeproj')
+
+        if (isWs(basePath))   return { flag: '-workspace', target: basePath }
+        if (isProj(basePath)) return { flag: '-project',   target: basePath }
+
+        let entries
+        try { entries = readdirSync(basePath) } catch { return null }
+
+        const ws   = entries.find(e => isWs(e))
+        const proj = entries.find(e => isProj(e))
+        if (ws)   return { flag: '-workspace', target: join(basePath, ws) }
+        if (proj) return { flag: '-project',   target: join(basePath, proj) }
+
+        for (const entry of entries) {
+          const sub = join(basePath, entry)
+          try {
+            const subEntries = readdirSync(sub)
+            const subWs   = subEntries.find(e => isWs(e))
+            const subProj = subEntries.find(e => isProj(e))
+            if (subWs)   return { flag: '-workspace', target: join(sub, subWs) }
+            if (subProj) return { flag: '-project',   target: join(sub, subProj) }
+          } catch {}
+        }
+        return null
+      }
+
+      // GET /api/validate-project-path?path=... → 경로 유효성 확인
+      server.middlewares.use('/api/validate-project-path', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        const qs = req.url?.split('?')[1] || ''
+        const path = decodeURIComponent((qs.match(/(?:^|&)path=([^&]*)/) || [])[1] || '')
+        if (!path) return res.end(JSON.stringify({ valid: false, reason: '경로를 입력하세요' }))
+        if (!existsSync(path)) return res.end(JSON.stringify({ valid: false, reason: '경로가 존재하지 않습니다' }))
+        const found = findXcodeProject(path)
+        if (found) return res.end(JSON.stringify({ valid: true, target: found.target }))
+        let entries = []
+        try { entries = readdirSync(path) } catch {}
+        return res.end(JSON.stringify({ valid: false, reason: `.xcworkspace / .xcodeproj를 찾을 수 없습니다`, entries: entries.slice(0, 10) }))
       })
 
       // ── Xcode 빌드 ──────────────────────────────────────
@@ -504,21 +593,14 @@ export function taskSyncPlugin() {
           }
 
           // .xcworkspace 또는 .xcodeproj 자동 감지
-          let buildFlag, buildTarget
-          try {
-            const entries = readdirSync(projectPath)
-            const ws = entries.find(e => e.endsWith('.xcworkspace') && !e.includes('project.xcworkspace'))
-            const proj = entries.find(e => e.endsWith('.xcodeproj'))
-            if (ws) { buildFlag = '-workspace'; buildTarget = join(projectPath, ws) }
-            else if (proj) { buildFlag = '-project'; buildTarget = join(projectPath, proj) }
-            else {
-              res.writeHead(400)
-              return res.end(JSON.stringify({ error: '.xcworkspace / .xcodeproj를 찾을 수 없습니다' }))
-            }
-          } catch (e) {
-            res.writeHead(500)
-            return res.end(JSON.stringify({ error: e.message }))
+          const found = findXcodeProject(projectPath)
+          if (!found) {
+            let entries = []
+            try { entries = readdirSync(projectPath) } catch {}
+            res.writeHead(400)
+            return res.end(JSON.stringify({ error: `.xcworkspace / .xcodeproj를 찾을 수 없습니다 (확인된 항목: ${entries.slice(0, 8).join(', ') || '없음'})` }))
           }
+          const { flag: buildFlag, target: buildTarget } = found
 
           const destArgs = destination ? ['-destination', destination] : ['-destination', 'generic/platform=iOS']
           const configArgs = configuration ? ['-configuration', configuration] : []

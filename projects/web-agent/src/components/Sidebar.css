@@ -32,6 +32,19 @@
   letter-spacing: -0.3px;
 }
 
+.logo-edit-input {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -0.3px;
+  background: #334155;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  width: 130px;
+}
+
 .sidebar-nav {
   flex: 1;
   padding: 16px 12px;

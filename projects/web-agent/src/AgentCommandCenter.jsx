@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Monitoring from './pages/Monitoring'
+import Agents from './pages/Agents'
 import TaskManagement from './pages/TaskManagement'
 import Settings from './pages/Settings'
 import TaskDetail from './pages/TaskDetail'
@@ -67,6 +68,8 @@ export default function AgentCommandCenter() {
     switch (activePage) {
       case 'monitoring':
         return <Monitoring key={pageKey} onOpenTask={openTask} onOpenPlatform={(p) => navigateTo('tasks', { platform: p })} />
+      case 'agents':
+        return <Agents key={pageKey} onOpenTask={openTask} />
       case 'tasks':
         return <TaskManagement key={pageKey} onOpenTask={openTask} platformFilter={platformFilter} />
       case 'settings':

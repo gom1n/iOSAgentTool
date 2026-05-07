@@ -79,6 +79,7 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
   const [selectedSchemeIdx, setSelectedSchemeIdx] = useState(0)
   const [buildStatus, setBuildStatus]             = useState('idle')
   const [buildLogs, setBuildLogs]                 = useState([])
+  const [buildError, setBuildError]               = useState(null)
   const buildLogRef = useRef(null)
 
   // 프로젝트 scheme 로드
@@ -165,14 +166,21 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
     if (!task.projectPath || !s?.name) return
     setBuildStatus('running')
     setBuildLogs([])
+    setBuildError(null)
     try {
-      await fetch('/api/xcode-build', {
+      const res = await fetch('/api/xcode-build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectPath: task.projectPath, scheme: s.name, destination: s.destination, configuration: s.configuration }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBuildStatus('failed')
+        setBuildError(data.error || `서버 오류 (${res.status})`)
+      }
     } catch {
       setBuildStatus('failed')
+      setBuildError('서버에 연결할 수 없습니다')
     }
   }
 
@@ -387,8 +395,13 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
               </button>
             )}
           </div>
-          {buildLogs.length > 0 && (
-            <pre className="build-log" ref={buildLogRef}>{buildLogs.join('\n')}</pre>
+          {buildError && (
+            <div className="build-error">{buildError}</div>
+          )}
+          {(buildStatus === 'running' || buildLogs.length > 0) && (
+            <pre className="build-log" ref={buildLogRef}>
+              {buildLogs.length > 0 ? buildLogs.join('\n') : '빌드 시작 중...'}
+            </pre>
           )}
         </div>
       )}

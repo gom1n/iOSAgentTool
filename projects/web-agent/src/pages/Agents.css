@@ -1,0 +1,248 @@
+.agents-page {
+  padding: 28px 32px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.agents-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.agents-empty {
+  margin-top: 60px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 2;
+}
+
+/* ── Agent Detail Card ── */
+.agent-detail-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.2s;
+}
+
+.agent-detail-card.running {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f620;
+}
+
+/* Header */
+.adc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adc-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adc-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.adc-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 20px;
+}
+
+.adc-status-badge.running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.adc-status-badge.idle {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.adc-pending-badge {
+  font-size: 11px;
+  background: #fef9c3;
+  color: #854d0e;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.adc-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.adc-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.adc-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.adc-btn.danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+}
+.adc-btn.danger:hover:not(:disabled) { background: #dc2626; }
+
+.adc-btn.ghost {
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+.adc-btn.ghost:hover:not(:disabled) { background: var(--bg-secondary); }
+
+/* Session row */
+.adc-session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.adc-session-id {
+  font-family: monospace;
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.adc-session-sep { opacity: 0.4; }
+.adc-session-none { font-style: italic; }
+
+/* Current task */
+.adc-current-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.adc-current-task:hover { background: #dbeafe; }
+
+.adc-task-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #dbeafe;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.adc-task-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adc-task-screen {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Log section */
+.adc-log-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.adc-log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.adc-log-toggle:hover { background: var(--bg-secondary); }
+
+.adc-log-live-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.adc-log-panel {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  background: #0f172a;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 0 0 6px 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Path */
+.adc-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+/* dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .adc-status-badge.running { background: #1e3a5f; color: #93c5fd; }
+  .adc-current-task { background: #1e3a5f; border-color: #1e40af; }
+  .adc-current-task:hover { background: #1e40af; }
+  .adc-task-label { background: #1e40af; color: #93c5fd; }
+  .adc-pending-badge { background: #451a03; color: #fcd34d; }
+}

@@ -1,7 +1,6 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  MdCheckCircle, MdHourglassEmpty, MdSync,
-  MdInventory2, MdCircle, MdRadioButtonUnchecked,
+  MdCheckCircle, MdHourglassEmpty, MdSync, MdInventory2,
 } from 'react-icons/md'
 import './Monitoring.css'
 
@@ -23,15 +22,6 @@ function trimLogs(logs) {
     .slice(0, MAX_LOGS)
 }
 
-const PIPELINE_STAGES = ['대기', '진행', '완료']
-
-function getStageIndex(status) {
-  if (status === 'pending')     return 0
-  if (status === 'in-progress') return 1
-  if (status === 'completed')   return 2
-  return 0
-}
-
 function formatTime(iso) {
   const d = new Date(iso)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -49,101 +39,15 @@ function formatRelative(iso) {
   return `${Math.floor(diff / 3600)}시간 전`
 }
 
-function Pipeline({ tasks, onOpenTask }) {
-  const task = [...tasks]
-    .sort((a, b) => new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at))[0]
-
-  if (!task) {
-    return <div className="pipeline-empty">배정된 작업 없음</div>
-  }
-
-  const stageIdx = getStageIndex(task.status)
-
-  return (
-    <div className="pipeline-single" onClick={(e) => { e.stopPropagation(); onOpenTask?.(task) }} style={{ cursor: 'pointer' }}>
-      <div className="pipeline-task-title">
-        <span className="pipeline-title-text">[{task.title}]</span>
-        <span className="pipeline-task-time">{formatRelative(task.updated_at ?? task.created_at)}</span>
-      </div>
-      <div className="pipeline-stages">
-        {PIPELINE_STAGES.map((stage, i) => {
-          const isDone           = i < stageIdx
-          const isCurrent        = i === stageIdx
-          const isCompletedFinal = isCurrent && task.status === 'completed'
-          return (
-            <Fragment key={stage}>
-              {i > 0 && (
-                <div className={`pipeline-connector ${isDone || isCompletedFinal ? 'done' : isCurrent ? 'active' : ''}`} />
-              )}
-              <div className={`pipeline-stage ${isDone || isCompletedFinal ? 'done' : isCurrent ? 'current' : 'pending'}`}>
-                <div className="pipeline-stage-dot">
-                  {(isDone || isCompletedFinal) && <MdCheckCircle size={14} />}
-                  {isCurrent && !isCompletedFinal && (
-                    task.status === 'in-progress'
-                      ? <span className="pipeline-pulse" />
-                      : <MdRadioButtonUnchecked size={14} />
-                  )}
-                  {!isDone && !isCurrent && <MdRadioButtonUnchecked size={14} />}
-                </div>
-                <span className="pipeline-stage-label">{stage}</span>
-              </div>
-            </Fragment>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-async function launchAgent(type, e) {
-  e?.stopPropagation()
-  try {
-    await fetch('http://localhost:3001/api/launch-agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type }),
-    })
-  } catch {
-    alert('런처 서버가 실행되지 않았습니다.\n터미널에서: cd launcher && node server.js')
-  }
-}
-
-async function stopIosAgent() {
-  try {
-    const r = await fetch('/api/stop-agent', { method: 'POST' })
-    const data = await r.json()
-    if (!data.ok) alert(`중단 실패: ${data.error}`)
-  } catch {
-    alert('워처 서버에 연결할 수 없습니다.\nios-watcher.js가 실행 중인지 확인하세요.')
-  }
-}
 
 export default function Monitoring({ onOpenTask, onOpenPlatform }) {
   const [tasks, setTasks] = useState([])
   const [logs, setLogs]   = useState(INITIAL_LOGS)
-  const [agentRunning, setAgentRunning] = useState(false)
 
   useEffect(() => {
     const refresh = () => setTasks(JSON.parse(localStorage.getItem('acc_tasks') || '[]'))
     refresh()
     const id = setInterval(refresh, 3000)
-    return () => clearInterval(id)
-  }, [])
-
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const r = await fetch('/api/agent-status')
-        if (r.ok) {
-          const data = await r.json()
-          setAgentRunning(data.running ?? false)
-        }
-      } catch {
-        setAgentRunning(false)
-      }
-    }
-    checkStatus()
-    const id = setInterval(checkStatus, 3000)
     return () => clearInterval(id)
   }, [])
 
@@ -186,8 +90,6 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
   const completed  = tasks.filter(t => t.status === 'completed').length
   const total      = tasks.length
 
-  const iosTasks = tasks.filter(t => t.platform === 'iOS')
-
   const recentTasks = [...tasks]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5)
@@ -199,41 +101,6 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
         <div className="refresh-info">
           <span className="pulse-dot" />
           <span>3초마다 자동 갱신</span>
-        </div>
-      </div>
-
-      {/* Agent Cards */}
-      <div className="agent-grid">
-        {/* iOS 에이전트: 파이프라인 */}
-        <div className="agent-card clickable" onClick={() => onOpenPlatform?.('iOS')}>
-          <div className="agent-header">
-            <div className="agent-info">
-              <span className="agent-badge ios">iOS</span>
-              <h3>iOS 에이전트</h3>
-            </div>
-            <div className="agent-header-right">
-              {agentRunning && (
-                <button
-                  className="stop-agent-btn"
-                  onClick={(e) => { e.stopPropagation(); stopIosAgent() }}
-                  title="iOS 에이전트 강제 중단"
-                >
-                  중단
-                </button>
-              )}
-              <div
-                className={`agent-status ${agentRunning ? 'online' : 'idle'}`}
-                onClick={(e) => launchAgent('ios', e)}
-                title="클릭하여 iOS 에이전트 터미널 열기"
-                style={{ cursor: 'pointer' }}
-              >
-                <MdCircle size={8} />
-                <span>{agentRunning ? '작업 중' : '대기 중'}</span>
-              </div>
-            </div>
-          </div>
-          <Pipeline tasks={iosTasks} onOpenTask={(task) => { onOpenTask?.(task) }} />
-          <div className="agent-role">실제 iOS 앱을 개발합니다.</div>
         </div>
       </div>
 

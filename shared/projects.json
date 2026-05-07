@@ -1,0 +1,71 @@
+[
+  {
+    "label": "코나카드",
+    "path": "/Users/mc.go14/Desktop/kona-iOS",
+    "schemes": [
+      {
+        "name": "KonaWallet",
+        "configuration": "DebugDev3",
+        "destination": "generic/platform=iOS"
+      }
+    ]
+  },
+  {
+    "label": "지역화폐2.0",
+    "path": "/Users/mc.go14/Desktop/localcard_iOS",
+    "schemes": [
+      {
+        "name": "GgCard",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "GimpoPay",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Konadure",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Cheonan",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Incheon",
+        "configuration": "Debug-Dev3",
+        "destination": "generic/platform=iOS"
+      }
+    ]
+  },
+  {
+    "label": "(구)지역화폐",
+    "path": "/Users/mc.go14/Desktop/bhchoi",
+    "schemes": [
+      {
+        "name": "Ulsanpay",
+        "configuration": "Debug",
+        "destination": "generic/platform=iOS"
+      }
+    ]
+  },
+  {
+    "label": "MONA",
+    "path": "/Users/mc.go14/Desktop/mona-app-ios/Konai_MonaApp",
+    "schemes": [
+      {
+        "name": "Konai_MonaApp",
+        "configuration": "Debug",
+        "destination": "generic/platform=iOS"
+      },
+      {
+        "name": "Konai_MonaApp_Dev",
+        "configuration": "Debug",
+        "destination": "generic/platform=iOS"
+      }
+    ]
+  }
+]

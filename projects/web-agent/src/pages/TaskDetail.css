@@ -677,6 +677,15 @@
 }
 .build-stop-btn:hover { background: #dc2626; }
 
+.build-error {
+  margin: 0;
+  padding: 10px 20px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 12px;
+  border-top: 1px solid #fecaca;
+}
+
 .build-log {
   margin: 0;
   padding: 12px 20px;

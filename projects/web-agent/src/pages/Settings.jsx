@@ -160,13 +160,16 @@ export default function Settings() {
 
   const [projects, setProjects]       = useState([])
   const [projectForm, setProjectForm] = useState({ label: '', path: '' })
-  const [editProjectIdx, setEditProjectIdx] = useState(null)
   const [showProjectForm, setShowProjectForm] = useState(false)
+  const [editingProjectIdx, setEditingProjectIdx] = useState(null)
+  const [editingProjectForm, setEditingProjectForm] = useState({ label: '', path: '' })
+  const [pathValidation, setPathValidation] = useState(null)  // null | { valid, target?, reason? }
+  const pathValidateTimer = useRef(null)
 
   // 스킴 관리
-  const [schemeFormProjectIdx, setSchemeFormProjectIdx] = useState(null)  // 어느 프로젝트의 스킴을 편집 중인지
+  const [schemeFormProjectIdx, setSchemeFormProjectIdx] = useState(null)
   const [editSchemeIdx, setEditSchemeIdx] = useState(null)
-  const [schemeForm, setSchemeForm] = useState({ name: '', configuration: '', destination: '' })
+  const [schemeForm, setSchemeForm] = useState({ name: '', configuration: '', destination: 'generic/platform=iOS' })
 
   const [branches, setBranches]       = useState({})      // { projectLabel: ['branch1', ...] }
   const [newBranch, setNewBranch]     = useState({})      // { projectLabel: 'input value' }
@@ -191,7 +194,16 @@ export default function Settings() {
 
   useEffect(() => {
     setScreens(loadScreens())
-    setProjects(loadProjects())
+    const loaded = loadProjects()
+    setProjects(loaded)
+    // 서버 파일과 자동 동기화 (projects.json 없을 때 대비)
+    if (loaded.length > 0) {
+      fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projects: loaded }),
+      }).catch(() => {})
+    }
     const storedBranches = localStorage.getItem('acc_branches')
     if (storedBranches) setBranches(JSON.parse(storedBranches))
 
@@ -217,22 +229,49 @@ export default function Settings() {
   const saveProjects = (updated) => {
     setProjects(updated)
     localStorage.setItem('acc_projects', JSON.stringify(updated))
+    fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projects: updated }),
+    }).catch(() => {})
   }
 
   const handleProjectSubmit = (e) => {
     e.preventDefault()
     if (!projectForm.label.trim() || !projectForm.path.trim()) return
-    const updated = editProjectIdx !== null
-      ? projects.map((p, i) => i === editProjectIdx ? { ...p, label: projectForm.label, path: projectForm.path } : p)
-      : [...projects, { label: projectForm.label, path: projectForm.path, schemes: [] }]
-    saveProjects(updated)
+    saveProjects([...projects, { label: projectForm.label, path: projectForm.path, schemes: [] }])
     setProjectForm({ label: '', path: '' })
     setShowProjectForm(false)
-    setEditProjectIdx(null)
+    setPathValidation(null)
   }
 
   const deleteProject = (idx) => {
     saveProjects(projects.filter((_, i) => i !== idx))
+  }
+
+  const handleInlineProjectEdit = (i) => {
+    setEditingProjectIdx(i)
+    setEditingProjectForm({ label: projects[i].label, path: projects[i].path })
+    setPathValidation(null)
+    validatePath(projects[i].path)
+  }
+
+  const handleInlineProjectSave = (i) => {
+    if (!editingProjectForm.label.trim() || !editingProjectForm.path.trim()) return
+    saveProjects(projects.map((p, idx) => idx === i ? { ...p, label: editingProjectForm.label, path: editingProjectForm.path } : p))
+    setEditingProjectIdx(null)
+    setPathValidation(null)
+  }
+
+  const validatePath = (path) => {
+    clearTimeout(pathValidateTimer.current)
+    if (!path.trim()) { setPathValidation(null); return }
+    pathValidateTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/validate-project-path?path=${encodeURIComponent(path.trim())}`)
+        setPathValidation(await r.json())
+      } catch { setPathValidation(null) }
+    }, 400)
   }
 
   const openSchemeForm = (projectIdx, schemeIdx) => {
@@ -240,14 +279,14 @@ export default function Settings() {
     setEditSchemeIdx(schemeIdx)
     setSchemeForm(schemeIdx !== null
       ? { ...projects[projectIdx].schemes[schemeIdx] }
-      : { name: '', configuration: '', destination: '' }
+      : { name: '', configuration: '', destination: 'generic/platform=iOS' }
     )
   }
 
   const closeSchemeForm = () => {
     setSchemeFormProjectIdx(null)
     setEditSchemeIdx(null)
-    setSchemeForm({ name: '', configuration: '', destination: '' })
+    setSchemeForm({ name: '', configuration: '', destination: 'generic/platform=iOS' })
   }
 
   const handleSchemeSubmit = (e, projectIdx) => {
@@ -762,7 +801,7 @@ export default function Settings() {
               <p className="section-desc">iOS 작업에 사용할 프로젝트 경로를 관리합니다</p>
             </div>
             {!showProjectForm && (
-              <button className="btn-primary" onClick={() => { setShowProjectForm(true); setEditProjectIdx(null); setProjectForm({ label: '', path: '' }) }}>
+              <button className="btn-primary" onClick={() => { setShowProjectForm(true); setProjectForm({ label: '', path: '' }) }}>
                 + 프로젝트 추가
               </button>
             )}
@@ -771,7 +810,7 @@ export default function Settings() {
           {showProjectForm && (
             <div className="form-card">
               <div className="form-card-header">
-                <h3>{editProjectIdx !== null ? '프로젝트 수정' : '새 프로젝트 추가'}</h3>
+                <h3>새 프로젝트 추가</h3>
               </div>
               <form onSubmit={handleProjectSubmit} className="project-form">
                 <div className="form-row">
@@ -783,22 +822,33 @@ export default function Settings() {
                       value={projectForm.label}
                       onChange={e => setProjectForm(f => ({ ...f, label: e.target.value }))}
                       required
+                      autoFocus
                     />
                   </div>
                   <div className="form-group flex-2">
                     <label>프로젝트 경로</label>
-                    <input
-                      type="text"
-                      placeholder="/path/to/your/ios-project"
-                      value={projectForm.path}
-                      onChange={e => setProjectForm(f => ({ ...f, path: e.target.value }))}
-                      required
-                    />
+                    <div className="project-path-wrap">
+                      <input
+                        type="text"
+                        className={pathValidation ? (pathValidation.valid ? 'path-ok' : 'path-err') : ''}
+                        placeholder="/path/to/your/ios-project"
+                        value={projectForm.path}
+                        onChange={e => { setProjectForm(f => ({ ...f, path: e.target.value })); validatePath(e.target.value) }}
+                        required
+                      />
+                      {pathValidation && (
+                        <div className={`path-validation ${pathValidation.valid ? 'ok' : 'err'}`}>
+                          {pathValidation.valid
+                            ? `✓ ${pathValidation.target?.split('/').pop()}`
+                            : `✗ ${pathValidation.reason}`}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="form-actions">
-                  <button type="button" className="btn-ghost" onClick={() => { setShowProjectForm(false); setEditProjectIdx(null) }}>취소</button>
-                  <button type="submit" className="btn-primary">{editProjectIdx !== null ? '저장' : '추가'}</button>
+                  <button type="button" className="btn-ghost" onClick={() => { setShowProjectForm(false); setPathValidation(null) }}>취소</button>
+                  <button type="submit" className="btn-primary">추가</button>
                 </div>
               </form>
             </div>
@@ -810,17 +860,51 @@ export default function Settings() {
             ) : (
               projects.map((p, i) => (
                 <div key={i} className="project-list-item">
-                  {/* 프로젝트 헤더 */}
-                  <div className="project-item-top">
-                    <div className="project-list-info">
-                      <span className="project-list-label">{p.label}</span>
-                      <code className="project-list-path">{p.path}</code>
+                  {/* 프로젝트 헤더 — 일반 / 인라인 편집 */}
+                  {editingProjectIdx === i ? (
+                    <div className="project-inline-edit">
+                      <div className="project-inline-fields">
+                        <input
+                          className="project-inline-input"
+                          placeholder="프로젝트 이름"
+                          value={editingProjectForm.label}
+                          onChange={e => setEditingProjectForm(f => ({ ...f, label: e.target.value }))}
+                          autoFocus
+                        />
+                        <div className="project-path-wrap">
+                          <input
+                            className={`project-inline-input project-inline-path ${pathValidation ? (pathValidation.valid ? 'path-ok' : 'path-err') : ''}`}
+                            placeholder="/path/to/ios-project"
+                            value={editingProjectForm.path}
+                            onChange={e => { setEditingProjectForm(f => ({ ...f, path: e.target.value })); validatePath(e.target.value) }}
+                            onKeyDown={e => { if (e.key === 'Enter') handleInlineProjectSave(i); if (e.key === 'Escape') setEditingProjectIdx(null) }}
+                          />
+                          {pathValidation && (
+                            <div className={`path-validation ${pathValidation.valid ? 'ok' : 'err'}`}>
+                              {pathValidation.valid
+                                ? `✓ ${pathValidation.target?.split('/').pop()}`
+                                : `✗ ${pathValidation.reason}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="project-inline-actions">
+                        <button className="btn-ghost-sm" onClick={() => { setEditingProjectIdx(null); setPathValidation(null) }}>취소</button>
+                        <button className="btn-primary-sm" onClick={() => handleInlineProjectSave(i)}>저장</button>
+                      </div>
                     </div>
-                    <div className="project-list-actions">
-                      <button className="btn-ghost-sm" onClick={() => { setProjectForm({ label: p.label, path: p.path }); setEditProjectIdx(i); setShowProjectForm(true) }}>편집</button>
-                      <button className="btn-ghost-sm btn-ghost-sm-danger" onClick={() => deleteProject(i)}>삭제</button>
+                  ) : (
+                    <div className="project-item-top">
+                      <div className="project-list-info">
+                        <span className="project-list-label">{p.label}</span>
+                        <code className="project-list-path">{p.path}</code>
+                      </div>
+                      <div className="project-list-actions">
+                        <button className="btn-ghost-sm" onClick={() => handleInlineProjectEdit(i)}>편집</button>
+                        <button className="btn-ghost-sm btn-ghost-sm-danger" onClick={() => deleteProject(i)}>삭제</button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* 스킴 서브리스트 */}
                   <div className="scheme-section">
@@ -839,9 +923,8 @@ export default function Settings() {
                       <div key={j} className="scheme-item">
                         {schemeFormProjectIdx === i && editSchemeIdx === j ? (
                           <form className="scheme-form" onSubmit={e => handleSchemeSubmit(e, i)}>
-                            <input className="scheme-input" placeholder="스킴 이름 *" value={schemeForm.name} onChange={e => setSchemeForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
+                            <input className="scheme-input scheme-input-grow" placeholder="스킴 이름 *" value={schemeForm.name} onChange={e => setSchemeForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
                             <input className="scheme-input" placeholder="Configuration (예: Debug)" value={schemeForm.configuration} onChange={e => setSchemeForm(f => ({ ...f, configuration: e.target.value }))} />
-                            <input className="scheme-input scheme-input-wide" placeholder="Destination (예: platform=iOS Simulator,...)" value={schemeForm.destination} onChange={e => setSchemeForm(f => ({ ...f, destination: e.target.value }))} />
                             <div className="scheme-form-actions">
                               <button type="button" className="btn-ghost-sm" onClick={closeSchemeForm}>취소</button>
                               <button type="submit" className="btn-primary-sm">저장</button>
@@ -852,7 +935,6 @@ export default function Settings() {
                             <div className="scheme-item-info">
                               <span className="scheme-item-name">{s.name}</span>
                               {s.configuration && <span className="scheme-item-meta">{s.configuration}</span>}
-                              {s.destination  && <span className="scheme-item-meta scheme-item-dest">{s.destination}</span>}
                             </div>
                             <div className="scheme-item-actions">
                               <button className="btn-ghost-sm" onClick={() => openSchemeForm(i, j)}>편집</button>
@@ -866,9 +948,8 @@ export default function Settings() {
                     {/* 새 스킴 추가 인라인 폼 */}
                     {schemeFormProjectIdx === i && editSchemeIdx === null && (
                       <form className="scheme-form" onSubmit={e => handleSchemeSubmit(e, i)}>
-                        <input className="scheme-input" placeholder="스킴 이름 *" value={schemeForm.name} onChange={e => setSchemeForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
+                        <input className="scheme-input scheme-input-grow" placeholder="스킴 이름 *" value={schemeForm.name} onChange={e => setSchemeForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
                         <input className="scheme-input" placeholder="Configuration (예: Debug)" value={schemeForm.configuration} onChange={e => setSchemeForm(f => ({ ...f, configuration: e.target.value }))} />
-                        <input className="scheme-input scheme-input-wide" placeholder="Destination (예: platform=iOS Simulator,...)" value={schemeForm.destination} onChange={e => setSchemeForm(f => ({ ...f, destination: e.target.value }))} />
                         <div className="scheme-form-actions">
                           <button type="button" className="btn-ghost-sm" onClick={closeSchemeForm}>취소</button>
                           <button type="submit" className="btn-primary-sm">추가</button>
