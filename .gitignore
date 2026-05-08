@@ -19,6 +19,10 @@ shared/screens/*/
 
 # 환경변수
 .env
+projects/jira-agent/.env
+
+# Jira 폴러 상태 (로컬 전용)
+projects/jira-agent/state/processed-issues.json
 
 # 의존성
 node_modules/

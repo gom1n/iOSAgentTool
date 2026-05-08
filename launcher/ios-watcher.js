@@ -314,6 +314,8 @@ function runAgent(projectKey, projectPath, projectLabel) {
     if (code === 143 || code === 130) {
       console.log(`   [${projectLabel}] 사용자 중단 — 재시도 없음`)
       agentState.consecutiveFailures = 0
+      agentState.userStopped = true
+      agentState.stoppedTaskFiles = new Set(getPendingTasksForProject(projectKey))
       return
     }
 
@@ -354,9 +356,18 @@ function poll() {
   for (const p of projects) {
     const key = p.label
     const tasks = getPendingTasksForProject(key)
-    if (tasks.length > 0 && !activeAgents[key]?.proc) {
-      runAgent(key, p.path, p.label)
+    if (tasks.length === 0 || activeAgents[key]?.proc) continue
+
+    const st = activeAgents[key]
+    if (st?.userStopped) {
+      const hasNewTask = tasks.some(f => !st.stoppedTaskFiles?.has(f))
+      if (!hasNewTask) continue
+      // 새 태스크가 추가됐으면 중단 플래그 해제 후 시작
+      st.userStopped = false
+      st.stoppedTaskFiles = null
     }
+
+    runAgent(key, p.path, p.label)
   }
 }
 

@@ -1,0 +1,18 @@
+{
+  "_comment": "Jira 컴포넌트 → 에이전트 플랫폼 매핑. 새 컴포넌트 추가 시 이 파일에만 추가하면 됩니다.",
+  "components": {
+    "ChungJu App-iOS":  { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "ChungJu" },
+    "SangJu App-iOS":   { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "SangJu" },
+    "Yangsan App-iOS":  { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "Yangsan" },
+    "Incheon App-iOS":  { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "Incheon" },
+    "Grigo App-iOS":    { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "Grigo" },
+    "Gimpo App-iOS":    { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "Gimpo" },
+    "Gyeonggi App-iOS": { "platform": "iOS", "projectLabel": "지역화폐2.0", "app": "Gyeonggi" },
+
+    "Ulsan App-iOS":    { "platform": "iOS", "projectLabel": "(구)지역화폐", "app": "Ulsan" },
+
+    "Kona App-iOS":     { "platform": "iOS", "projectLabel": "코나카드", "app": "Kona" },
+
+    "_fallback": { "platform": "iOS", "projectLabel": null, "app": null }
+  }
+}
