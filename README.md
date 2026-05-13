@@ -2,12 +2,12 @@
 
 # 🤖 iOS Agent System
 
-**Claude Code를 활용한 iOS 개발 자동화 백오피스**
+**Claude Code를 활용한 iOS 개발 자동화 — macOS 앱**
 
-웹 UI에서 작업을 등록하면 Claude 에이전트가 실제 iOS 코드를 구현합니다.
+작업을 등록하면 Claude 에이전트가 실제 iOS 코드를 자동으로 구현합니다.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
-[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![Electron](https://img.shields.io/badge/Electron-35-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
 [![Claude](https://img.shields.io/badge/Powered%20by-Claude%20Code-D97757?style=flat-square)](https://claude.ai/code)
 [![Platform](https://img.shields.io/badge/Platform-macOS-000000?style=flat-square&logo=apple&logoColor=white)](https://www.apple.com/macos)
 
@@ -31,9 +31,10 @@
 ## 🔄 동작 방식
 
 ```
-웹 UI (포트 5173)
-  └─ 작업 등록 → shared/task-queue/pending/
-       └─ ios-watcher.js 감지
+AgentSystem.app 실행
+  ├─ launcher/server.js 자동 시작 (포트 3001)
+  └─ launcher/ios-watcher.js 자동 시작 (포트 3002)
+       └─ 작업 등록 → shared/task-queue/pending/
             └─ Claude Code 자동 실행
                  └─ 실제 iOS 프로젝트 코드 수정 + 빌드 검증
 ```
@@ -56,31 +57,44 @@ claude  # 로그인
 
 ## 🚀 설치 및 실행
 
-### 1. 설치
+### 1. 저장소 클론
 
 ```bash
 git clone https://github.com/gom1n/iOSAgentTool.git
 cd iOSAgentTool
-
-cd projects/web-agent && npm install && cd ../..
 ```
 
-### 2. 실행
-
-터미널을 두 개 열어서 각각 실행합니다.
+### 2. 앱 빌드
 
 ```bash
-# 터미널 1 — 웹 UI
-cd projects/web-agent
-npm run dev
+cd projects/macos-app
+npm install
+npm run build:mac
 ```
+
+빌드가 완료되면 `projects/macos-app/dist/` 안에 `AgentSystem.dmg`가 생성됩니다.
+
+### 3. 설치 및 실행
+
+1. `AgentSystem.dmg`를 열어 `Applications`에 드래그
+2. `AgentSystem.app` 실행
+
+앱이 시작되면 서버와 에이전트 감시자가 자동으로 실행됩니다.
+
+---
+
+## 💻 개발 모드
+
+앱 빌드 없이 바로 실행하려면:
 
 ```bash
-# 터미널 2 — 에이전트 감시자
-node launcher/ios-watcher.js
-```
+# 터미널 1 — 웹 UI (Vite 개발 서버)
+cd projects/web-agent && npm install && npm run dev
 
-브라우저에서 **http://localhost:5173** 접속
+# 터미널 2 — Electron 앱
+cd projects/macos-app && npm install
+NODE_ENV=development npm run dev
+```
 
 ---
 
@@ -97,11 +111,12 @@ node launcher/ios-watcher.js
 ```
 agent-system/
 ├── launcher/
-│   └── ios-watcher.js     # 작업 감지 및 에이전트 자동 실행
+│   ├── server.js          # 터미널 에이전트 실행 (포트 3001)
+│   └── ios-watcher.js     # 작업 감지 및 에이전트 자동 실행 (포트 3002)
 ├── projects/
-│   ├── web-agent/         # React + Vite 웹 UI
+│   ├── macos-app/         # Electron macOS 앱
+│   ├── web-agent/         # React + Vite UI
 │   └── ios-agent/         # Claude 에이전트 작업 디렉토리
-│       └── CLAUDE.md      # 에이전트 행동 지침 (수정 가능)
 └── shared/
     ├── task-queue/        # pending / in-progress / completed
     ├── screens/           # 화면별 컨텍스트 파일
