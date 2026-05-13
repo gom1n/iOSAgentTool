@@ -1,0 +1,53 @@
+{
+  "name": "agent-system",
+  "version": "1.0.0",
+  "description": "Agent System macOS App",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "electron .",
+    "build:web": "cd ../web-agent && BUILD_TARGET=electron npm run build",
+    "build:mac": "npm run build:web && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.agent-system.app",
+    "productName": "AgentSystem",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "tray.js",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../web-agent/dist",
+        "to": "web",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../launcher",
+        "to": "launcher",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../shared",
+        "to": "shared",
+        "filter": ["**/*"]
+      }
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    }
+  }
+}

@@ -4,6 +4,7 @@
 
 # 빌드 결과물
 projects/web-agent/dist/
+projects/macos-app/dist/
 
 # 로컬 Claude 설정 (개인 hooks/permissions 포함)
 **/.claude/settings.local.json

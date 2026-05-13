@@ -70,5 +70,14 @@
     "platform": "iOS",
     "completedAt": "2026-05-07T03:16:50.603Z",
     "createdAt": "2026-05-07T01:40:20.554Z"
+  },
+  {
+    "id": "task-1778548471537-ojbn",
+    "title": "거래내역 신청 화면 도메인 선택 시 팝업 외 영역 선택 시 팝업 닫기 동작 안됨",
+    "projectKey": "지역화폐2.0",
+    "scheme": "Chungju",
+    "platform": "iOS",
+    "completedAt": "2026-05-12T01:15:47.154Z",
+    "createdAt": "2026-05-12T01:14:31.538Z"
   }
 ]
