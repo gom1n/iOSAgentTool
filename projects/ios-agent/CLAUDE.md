@@ -38,10 +38,16 @@ find ../../shared/screens -name "{screenId}_spec.md" | head -1 | xargs -I{} cat 
 ```bash
 curl -s -X PATCH http://localhost:5173/api/task-queue/{task.id} \
   -H "Content-Type: application/json" \
-  -d '{...task JSON..., "status": "completed", "agentSummary": "..."}'
+  -d '{...task JSON..., "status": "completed", "agentSummary": "...", "agentSuccess": true, "agentBuildSuccess": true, "humanEstimateMinutes": 숫자}'
 ```
 
 `agentSummary` 규칙: 마크다운 사용, 원인분석 → 수정내용 → 결과 순, 3~10줄.
+
+`agentSuccess` 규칙: 작업을 성공적으로 완료했으면 `true`, 오류/실패/불완전하면 `false`.
+
+`agentBuildSuccess` 규칙: xcodebuild가 성공(exit 0)이면 `true`, 빌드 에러 발생이면 `false`, 빌드를 실행하지 않았으면 필드 자체를 생략.
+
+`humanEstimateMinutes` 규칙: 경력 3년차 개발자가 이 작업을 처음부터 혼자 처리한다면 몇 분 걸릴지 정수로 추정. 기획·디자인 시간 제외, 순수 개발 및 코드리뷰 기준. (예: 간단한 UI 수정 30~60, 기능 추가 60~240, 복잡한 신규 화면 240~480)
 
 ---
 

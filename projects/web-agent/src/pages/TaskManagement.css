@@ -414,6 +414,45 @@
   color: var(--text-secondary);
 }
 
+.task-time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.time-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+
+.time-badge.agent {
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.time-badge.human {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+.time-badge.efficiency {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  .time-badge.agent { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+  .time-badge.efficiency { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+}
+
 .task-card-footer {
   display: flex;
   justify-content: space-between;
