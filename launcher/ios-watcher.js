@@ -171,6 +171,9 @@ function runAgent(projectKey, projectPath, projectLabel) {
   }
   activeAgents[projectKey] = agentState
 
+  const guidelinesPath = path.join(ROOT, 'shared/guidelines', `${projectKey}.md`)
+  const hasGuidelines = fs.existsSync(guidelinesPath)
+
   const prompt = [
     `당신은 iOS 에이전트입니다.`,
     `담당 프로젝트: ${projectLabel}`,
@@ -179,6 +182,11 @@ function runAgent(projectKey, projectPath, projectLabel) {
     `${PENDING_DIR} 폴더에서 platform이 "iOS"이고 projectKey가 "${projectKey}"인 작업 파일을 찾아서 처리하세요.`,
     `다른 projectKey의 작업은 절대 처리하지 마세요.`,
     ``,
+    ...(hasGuidelines ? [
+      `이 프로젝트의 전용 가이드라인 파일이 있습니다. 작업 시작 전 반드시 읽으세요:`,
+      `  ${guidelinesPath}`,
+      ``,
+    ] : []),
     `CLAUDE.md의 작업 흐름 지시에 따라 처리하되, 파일 수정 경로는 모두 ${projectPath} 기준으로 합니다.`,
   ].join('\n')
 
