@@ -48,6 +48,14 @@ function loadScreens() {
 
 const EMPTY_FORM = { title: '', platform: 'iOS', screenIds: [], description: '', requirements: '', projectKey: '', projectPath: '', scheme: '' }
 
+function formatDuration(ms) {
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}분`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`
+}
+
 export default function TaskManagement({ onOpenTask, platformFilter }) {
   const [tasks, setTasks]       = useState([])
   const [screens, setScreens]   = useState([])
@@ -412,6 +420,19 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                   {task.requirements.map((req, i) => <li key={i}>{req}</li>)}
                 </ul>
               )}
+              {task.status === 'completed' && task.started_at && (() => {
+                const startTs = task.started_at
+                const agentMs = new Date(task.updated_at) - new Date(startTs)
+                const humanMs = task.humanEstimateMinutes ? task.humanEstimateMinutes * 60000 : null
+                const ratio = humanMs && agentMs > 0 ? (humanMs / agentMs).toFixed(1) : null
+                return (
+                  <div className="task-time-row">
+                    <span className="time-badge agent">⚡ {formatDuration(agentMs)}</span>
+                    {humanMs && <span className="time-badge human">👤 {formatDuration(humanMs)}</span>}
+                    {ratio && parseFloat(ratio) > 1 && <span className="time-badge efficiency">{ratio}x 빠름</span>}
+                  </div>
+                )
+              })()}
               <div className="task-card-footer">
                 <span className="task-id">{task.id}</span>
                 <span className="task-date">{new Date(task.created_at).toLocaleDateString('ko-KR')}</span>

@@ -47,7 +47,7 @@ function loadProjectColors() {
 
 export default function TaskHistoryChart() {
   const [history, setHistory]         = useState([])
-  const [range, setRange]             = useState(14)
+  const [range, setRange]             = useState(30)
   const [tooltip, setTooltip]         = useState(null)
   const [loading, setLoading]         = useState(true)
   const [projectColors, setProjectColors] = useState({})

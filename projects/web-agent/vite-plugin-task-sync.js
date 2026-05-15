@@ -115,6 +115,7 @@ function appendHistory(task) {
 
 const STATUS_LABEL = { pending: '대기 중', 'in-progress': '진행 중', completed: '완료' }
 
+
 function appendActivityLog(entry) {
   let logs = []
   try { logs = JSON.parse(readFileSync(LOGS_FILE, 'utf-8')) } catch {}
@@ -267,16 +268,36 @@ export function taskSyncPlugin() {
 
           // agentSummary가 있으면 agentReports 배열에 누적
           let agentReports = []
+          let existingHumanEstimate = null
+          let existingStartedAt = null
           if (found) {
-            try { agentReports = JSON.parse(readFileSync(found.path, 'utf-8')).agentReports || [] } catch {}
+            try {
+              const existing = JSON.parse(readFileSync(found.path, 'utf-8'))
+              agentReports = existing.agentReports || []
+              existingHumanEstimate = existing.humanEstimateMinutes || null
+              existingStartedAt = existing.started_at || null
+            } catch {}
             unlinkSync(found.path)
           }
           if (task.agentSummary && task.status === 'completed') {
-            agentReports = [...agentReports, { summary: task.agentSummary, completedAt: new Date().toISOString() }]
+            const report = { summary: task.agentSummary, completedAt: new Date().toISOString() }
+            if (task.agentSuccess !== undefined) report.success = task.agentSuccess
+            if (task.agentBuildSuccess !== undefined) report.buildSuccess = task.agentBuildSuccess
+            agentReports = [...agentReports, report]
           }
 
+          const humanEstimateMinutes = task.humanEstimateMinutes || existingHumanEstimate
+          // in-progress 전환 시 최초 1회만 started_at 기록
+          const started_at = existingStartedAt || (task.status === 'in-progress' ? new Date().toISOString() : undefined)
+
           const newFolder = task.status || 'pending'
-          const taskWithTs = { ...task, agentReports, updated_at: new Date().toISOString() }
+          const taskWithTs = {
+            ...task,
+            agentReports,
+            updated_at: new Date().toISOString(),
+            ...(humanEstimateMinutes != null ? { humanEstimateMinutes } : {}),
+            ...(started_at ? { started_at } : {}),
+          }
           writeFileSync(join(QUEUE_BASE, newFolder, `${id}.json`), JSON.stringify(taskWithTs, null, 2))
           if (task.status === 'completed') appendHistory(task)
           res.end(JSON.stringify({ ok: true }))

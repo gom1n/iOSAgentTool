@@ -1,7 +1,4 @@
 import { useState, useEffect } from 'react'
-import {
-  MdCheckCircle, MdHourglassEmpty, MdSync, MdInventory2,
-} from 'react-icons/md'
 import TourOverlay from '../components/TourOverlay'
 import usePageTour from '../hooks/usePageTour'
 import TaskHistoryChart from '../components/TaskHistoryChart'
@@ -10,7 +7,6 @@ import './Monitoring.css'
 
 const TOUR_STEPS = [
   { title: '모니터링', desc: '작업 현황을 실시간으로 확인하는 메인 화면입니다.\n3초마다 자동으로 갱신됩니다.', target: null },
-  { title: '작업 현황 통계', desc: '전체·대기·진행·완료 작업 수를 한눈에 확인합니다.', target: '[data-tour="stats-row"]' },
   { title: '최근 작업', desc: '가장 최근에 추가된 작업 5개를 표시합니다.\n클릭하면 상세 화면으로 이동합니다.', target: '[data-tour="recent-tasks"]' },
   { title: '활동 로그', desc: '에이전트와 시스템의 활동 기록을 최신순으로 표시합니다.\n최대 30개까지 보관되며 초기화할 수 있습니다.', target: '[data-tour="activity-log"]' },
 ]
@@ -41,6 +37,14 @@ function formatTime(iso) {
   const mo = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${mo}/${dd} ${hh}:${mm}:${ss}`
+}
+
+function formatDuration(ms) {
+  const totalMin = Math.round(ms / 60000)
+  if (totalMin < 60) return `${totalMin}분`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`
 }
 
 function formatRelative(iso) {
@@ -112,10 +116,33 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
     return () => clearInterval(id)
   }, [])
 
-  const pending    = tasks.filter(t => t.status === 'pending').length
-  const inProgress = tasks.filter(t => t.status === 'in-progress').length
-  const completed  = tasks.filter(t => t.status === 'completed').length
-  const total      = tasks.length
+  const kpi = (() => {
+    const done = tasks.filter(t => t.status === 'completed' && t.agentReports?.length > 0)
+    if (done.length === 0) return null
+
+    // 첫 시도 성공률: agentReports[0].success 필드가 있는 태스크 기준
+    const firstTrySet  = done.filter(t => t.agentReports[0].success !== undefined)
+    const firstSuccess = firstTrySet.length > 0
+      ? Math.round(firstTrySet.filter(t => t.agentReports[0].success === true).length / firstTrySet.length * 100)
+      : null
+
+    // 재진행 비율: agentReports가 2개 이상인 태스크
+    const retryRate = Math.round(done.filter(t => t.agentReports.length > 1).length / done.length * 100)
+
+    // Xcode 빌드 성공률: iOS + buildSuccess 필드 있는 태스크의 마지막 report 기준
+    const buildSet = done.filter(t => t.platform === 'iOS' && t.agentReports.some(r => r.buildSuccess !== undefined))
+    const buildSuccessRate = buildSet.length > 0
+      ? (() => {
+          const lastReports = buildSet.map(t => [...t.agentReports].reverse().find(r => r.buildSuccess !== undefined))
+          return Math.round(lastReports.filter(r => r.buildSuccess === true).length / lastReports.length * 100)
+        })()
+      : null
+
+    // 평균 시도 횟수
+    const avgTries = (done.reduce((s, t) => s + t.agentReports.length, 0) / done.length).toFixed(1)
+
+    return { firstSuccess, retryRate, buildSuccessRate, avgTries, n: done.length, firstTryN: firstTrySet.length, buildN: buildSet.length }
+  })()
 
   const recentTasks = [...tasks]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -134,35 +161,79 @@ export default function Monitoring({ onOpenTask, onOpenPlatform }) {
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="stats-row" data-tour="stats-row">
-        <div className="stat-card">
-          <div className="stat-card-value">{total}</div>
-          <div className="stat-card-label">전체 작업</div>
-          <MdInventory2 className="stat-card-icon" />
-        </div>
-        <div className="stat-card pending-card">
-          <div className="stat-card-value">{pending}</div>
-          <div className="stat-card-label">대기 중</div>
-          <MdHourglassEmpty className="stat-card-icon" />
-        </div>
-        <div className="stat-card inprogress-card">
-          <div className="stat-card-value">{inProgress}</div>
-          <div className="stat-card-label">진행 중</div>
-          <MdSync className="stat-card-icon" />
-        </div>
-        <div className="stat-card completed-card">
-          <div className="stat-card-value">{completed}</div>
-          <div className="stat-card-label">완료</div>
-          <MdCheckCircle className="stat-card-icon" />
-        </div>
-      </div>
-
       {/* History Chart */}
       <TaskHistoryChart />
 
       {/* Token Usage Chart */}
       <TokenUsageChart />
+
+      {/* KPI Widget */}
+      {kpi && (
+        <div className="kpi-card">
+          <div className="kpi-title">지표</div>
+          <div className="kpi-grid">
+            <div className="kpi-item">
+              <div className={`kpi-value ${kpi.firstSuccess !== null ? (kpi.firstSuccess >= 70 ? 'good' : kpi.firstSuccess >= 40 ? 'warn' : 'bad') : 'na'}`}>
+                {kpi.firstSuccess !== null ? `${kpi.firstSuccess}%` : '—'}
+              </div>
+              <div className="kpi-label">첫 시도 성공률</div>
+              <div className="kpi-sub">{kpi.firstSuccess !== null ? `n=${kpi.firstTryN}` : '데이터 누적 중'}</div>
+            </div>
+            <div className="kpi-item">
+              <div className={`kpi-value ${kpi.retryRate <= 20 ? 'good' : kpi.retryRate <= 50 ? 'warn' : 'bad'}`}>
+                {kpi.retryRate}%
+              </div>
+              <div className="kpi-label">재진행 비율</div>
+              <div className="kpi-sub">n={kpi.n}</div>
+            </div>
+            <div className="kpi-item">
+              <div className={`kpi-value ${kpi.buildSuccessRate !== null ? (kpi.buildSuccessRate >= 80 ? 'good' : kpi.buildSuccessRate >= 50 ? 'warn' : 'bad') : 'na'}`}>
+                {kpi.buildSuccessRate !== null ? `${kpi.buildSuccessRate}%` : '—'}
+              </div>
+              <div className="kpi-label">빌드 성공률</div>
+              <div className="kpi-sub">{kpi.buildSuccessRate !== null ? `iOS n=${kpi.buildN}` : '데이터 누적 중'}</div>
+            </div>
+            <div className="kpi-item">
+              <div className="kpi-value">{kpi.avgTries}</div>
+              <div className="kpi-label">평균 시도 횟수</div>
+              <div className="kpi-sub">n={kpi.n}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Efficiency Widget */}
+      {(() => {
+        const measured = tasks.filter(t => t.status === 'completed' && t.humanEstimateMinutes && t.started_at && t.updated_at)
+        if (measured.length === 0) return null
+        const totalAgentMs = measured.reduce((s, t) => s + (new Date(t.updated_at) - new Date(t.started_at || t.created_at)), 0)
+        const totalHumanMs = measured.reduce((s, t) => s + t.humanEstimateMinutes * 60000, 0)
+        const savedMs = totalHumanMs - totalAgentMs
+        const avgRatio = totalAgentMs > 0 ? (totalHumanMs / totalAgentMs).toFixed(1) : '—'
+        return (
+          <div className="efficiency-card">
+            <div className="efficiency-title">인간 대비 효율 분석 ({measured.length}건)</div>
+            <div className="efficiency-stats">
+              <div className="efficiency-stat">
+                <div className="efficiency-stat-value highlight">{avgRatio}x</div>
+                <div className="efficiency-stat-label">평균 속도</div>
+              </div>
+              <div className="efficiency-stat">
+                <div className="efficiency-stat-value">{savedMs > 0 ? formatDuration(savedMs) : '-'}</div>
+                <div className="efficiency-stat-label">총 절약 시간</div>
+              </div>
+              <div className="efficiency-stat">
+                <div className="efficiency-stat-value">{formatDuration(totalAgentMs)}</div>
+                <div className="efficiency-stat-label">에이전트 총 소요</div>
+              </div>
+              <div className="efficiency-stat">
+                <div className="efficiency-stat-value">{formatDuration(totalHumanMs)}</div>
+                <div className="efficiency-stat-label">인간 예상 총계</div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Bottom: Recent Tasks + Activity Log */}
       <div className="bottom-grid">

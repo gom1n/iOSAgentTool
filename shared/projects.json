@@ -9,7 +9,7 @@
         "destination": "generic/platform=iOS"
       }
     ],
-    "color": "#ff8080"
+    "color": "#ff3d3d"
   },
   {
     "label": "지역화폐2.0",
@@ -81,5 +81,11 @@
       }
     ],
     "color": "#3582fd"
+  },
+  {
+    "label": "코나마켓",
+    "path": "/Users/mc.go14/Desktop/flea_market_ios",
+    "color": "#ff7575",
+    "schemes": []
   }
 ]
