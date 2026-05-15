@@ -465,9 +465,9 @@ export function taskSyncPlugin() {
         res.end(JSON.stringify({
           root: ROOT,
           screensBase: join(ROOT, 'shared/screens'),
+          guidelinesDir: join(ROOT, 'shared/guidelines'),
           guideFiles: {
-            master: join(ROOT, 'shared/guidelines/MASTER.md'),
-            ios:    join(ROOT, 'projects/ios-agent/CLAUDE.md'),
+            ios: join(ROOT, 'projects/ios-agent/CLAUDE.md'),
           },
         }))
       })

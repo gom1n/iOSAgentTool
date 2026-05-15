@@ -9,40 +9,8 @@ const TOUR_STEPS = [
   { title: '설정', desc: '에이전트가 작동하기 위한 기본 정보를 등록합니다.\n처음 사용 시 프로젝트 탭부터 시작하세요.', target: null },
   { title: '화면 매핑 탭', desc: 'iOS 스크린과 코드 파일을 연결합니다.\n에이전트가 어떤 파일을 수정해야 하는지 파악하는 데 사용됩니다.', target: '[data-tour="tab-mapping"]' },
   { title: '프로젝트 탭', desc: 'iOS 프로젝트 경로와 빌드 스킴을 등록합니다.\n경로를 입력하면 실시간으로 유효성을 검증합니다.', target: '[data-tour="tab-projects"]' },
-  { title: '가이드 탭', desc: '에이전트의 행동 지침을 편집합니다.\nMaster 가이드와 iOS 에이전트 CLAUDE.md를 직접 수정할 수 있습니다.', target: '[data-tour="tab-guide"]' },
+  { title: '가이드 탭', desc: '에이전트의 행동 지침을 편집합니다.\niOS 에이전트 공통 CLAUDE.md와 프로젝트별 가이드라인을 직접 수정할 수 있습니다.', target: '[data-tour="tab-guide"]' },
 ]
-
-const DEFAULT_MASTER = `# Agent System - 전체 시스템 가이드
-
-## 통신 규약
-
-### Task JSON 형식
-\`\`\`json
-{
-  "id": "task-001",
-  "created_at": "2024-01-15T10:00:00Z",
-  "title": "로그인 기능 추가",
-  "platform": "iOS",
-  "description": "사용자 로그인 페이지 구현",
-  "status": "pending",
-  "requirements": [
-    "이메일/비밀번호 입력",
-    "유효성 검사"
-  ]
-}
-\`\`\`
-
-### Status JSON 형식
-\`\`\`json
-{
-  "task_id": "task-001",
-  "agent": "ios-agent",
-  "status": "in-progress",
-  "progress": 60,
-  "last_updated": "2024-01-15T10:30:00Z"
-}
-\`\`\`
-`
 
 
 const DEFAULT_IOS_GUIDE = `# iOS Agent - Claude Code 가이드
@@ -179,9 +147,8 @@ export default function Settings() {
   const [editSchemeIdx, setEditSchemeIdx] = useState(null)
   const [schemeForm, setSchemeForm] = useState({ name: '', configuration: '', destination: 'generic/platform=iOS' })
 
-  const [masterGuide, setMasterGuide] = useState(DEFAULT_MASTER)
-
   const [iosGuide, setIosGuide] = useState(DEFAULT_IOS_GUIDE)
+  const [projectGuides, setProjectGuides] = useState({}) // { [projectKey]: content }
   const { showTour, startTour, closeTour } = usePageTour('settings')
   const [migrating, setMigrating]   = useState(false)
   const [migrateResult, setMigrateResult] = useState(null)
@@ -257,11 +224,20 @@ export default function Settings() {
       .then(r => r.json())
       .then(paths => {
         setSystemPaths(paths)
-        readGuideFile(paths.guideFiles?.master, setMasterGuide)
         readGuideFile(paths.guideFiles?.ios, setIosGuide)
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!systemPaths?.guidelinesDir || projects.length === 0) return
+    projects.forEach(({ label: projectKey }) => {
+      const filePath = `${systemPaths.guidelinesDir}/${projectKey}.md`
+      readGuideFile(filePath, (content) =>
+        setProjectGuides(prev => ({ ...prev, [projectKey]: content }))
+      )
+    })
+  }, [systemPaths, projects])
 
   useEffect(() => {
     if (screenMenuIdx === null) return
@@ -435,12 +411,19 @@ export default function Settings() {
   }
 
   const handleSaveGuide = async (type) => {
-    const contentMap = { master: masterGuide, ios: iosGuide }
+    let filePath, content
+    if (type === 'ios') {
+      filePath = guideFiles.ios
+      content = iosGuide
+    } else {
+      filePath = `${systemPaths?.guidelinesDir}/${type}.md`
+      content = projectGuides[type] ?? ''
+    }
     try {
       await fetch('/api/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: guideFiles[type], content: contentMap[type] }),
+        body: JSON.stringify({ path: filePath, content }),
       })
     } catch {}
     setSavedGuide(type)
@@ -1009,10 +992,8 @@ export default function Settings() {
       {activeTab === 'guide' && (
         <div className="tab-content">
           <div className="guide-list">
-            {[
-              { key: 'master', label: 'MASTER.md', desc: '전역 시스템 가이드', value: masterGuide, setter: setMasterGuide },
-              { key: 'ios', label: 'iOS 에이전트 CLAUDE.md', desc: 'iOS 에이전트 작업 가이드', value: iosGuide, setter: setIosGuide },
-            ].map(g => (
+            {/* 공통 iOS 에이전트 CLAUDE.md */}
+            {[{ key: 'ios', label: 'iOS 에이전트 CLAUDE.md', desc: '모든 iOS 에이전트에 적용되는 공통 작업 가이드', value: iosGuide, setter: setIosGuide }].map(g => (
               <div key={g.key} className="guide-card">
                 <div className="guide-card-header">
                   <div>
@@ -1032,17 +1013,56 @@ export default function Settings() {
                   </div>
                 </div>
                 {editingGuide === g.key ? (
-                  <textarea
-                    className="guide-editor"
-                    value={g.value}
-                    onChange={e => g.setter(e.target.value)}
-                    rows={20}
-                  />
+                  <textarea className="guide-editor" value={g.value} onChange={e => g.setter(e.target.value)} rows={20} />
                 ) : (
                   <pre className="guide-preview">{g.value}</pre>
                 )}
               </div>
             ))}
+
+            {/* 프로젝트별 가이드라인 */}
+            {projects.length > 0 && (
+              <>
+                <div className="guide-section-title">프로젝트별 가이드라인</div>
+                {projects.map(({ label: projectKey, color }) => {
+                  const value = projectGuides[projectKey] ?? ''
+                  return (
+                    <div key={projectKey} className="guide-card">
+                      <div className="guide-card-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
+                          <div>
+                            <div className="guide-filename">{projectKey}.md</div>
+                            <div className="guide-desc">{projectKey} 프로젝트 전용 에이전트 지침</div>
+                          </div>
+                        </div>
+                        <div className="guide-actions">
+                          {savedGuide === projectKey && <span className="saved-badge">✓ 저장됨</span>}
+                          {editingGuide === projectKey ? (
+                            <>
+                              <button className="btn-ghost-sm" onClick={() => setEditingGuide(null)}>취소</button>
+                              <button className="btn-primary-sm" onClick={() => handleSaveGuide(projectKey)}>저장</button>
+                            </>
+                          ) : (
+                            <button className="btn-ghost-sm" onClick={() => setEditingGuide(projectKey)}>편집</button>
+                          )}
+                        </div>
+                      </div>
+                      {editingGuide === projectKey ? (
+                        <textarea
+                          className="guide-editor"
+                          value={value}
+                          onChange={e => setProjectGuides(prev => ({ ...prev, [projectKey]: e.target.value }))}
+                          rows={20}
+                        />
+                      ) : (
+                        <pre className="guide-preview">{value || '(가이드라인 없음 — 편집 버튼으로 추가하세요)'}</pre>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
           </div>
         </div>
       )}

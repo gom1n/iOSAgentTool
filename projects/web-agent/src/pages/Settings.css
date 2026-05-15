@@ -905,6 +905,15 @@
   gap: 16px;
 }
 
+.guide-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 0;
+}
+
 .guide-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
