@@ -9,15 +9,6 @@
     "createdAt": "2026-04-22T04:18:01.786Z"
   },
   {
-    "id": "task-1776908334703-5shs",
-    "title": "테스트 작업",
-    "projectKey": "코나카드",
-    "scheme": "",
-    "platform": "iOS",
-    "completedAt": "2026-04-24T05:15:53.785Z",
-    "createdAt": "2026-04-23T01:38:54.703Z"
-  },
-  {
     "id": "task-1777011053979-4k1l",
     "title": "활동 로그의 최대 개수 지정",
     "projectKey": "기타",
@@ -70,5 +61,23 @@
     "platform": "iOS",
     "completedAt": "2026-05-07T03:16:50.603Z",
     "createdAt": "2026-05-07T01:40:20.554Z"
+  },
+  {
+    "id": "task-1778548471537-ojbn",
+    "title": "거래내역 신청 화면 도메인 선택 시 팝업 외 영역 선택 시 팝업 닫기 동작 안됨",
+    "projectKey": "지역화폐2.0",
+    "scheme": "Chungju",
+    "platform": "iOS",
+    "completedAt": "2026-05-18T03:49:45.763Z",
+    "createdAt": "2026-05-12T01:14:31.538Z"
+  },
+  {
+    "id": "task-1779076396873-cus9",
+    "title": " 거래 내역 신청 - 이메일 저장 체크박스 확인 (복사)",
+    "projectKey": "지역화폐2.0",
+    "scheme": "Cheonan",
+    "platform": "iOS",
+    "completedAt": "2026-05-18T03:54:04.732Z",
+    "createdAt": "2026-05-18T03:53:16.873Z"
   }
 ]

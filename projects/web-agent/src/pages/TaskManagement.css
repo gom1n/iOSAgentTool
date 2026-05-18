@@ -431,9 +431,9 @@
 }
 
 .time-badge.agent {
-  background: rgba(59, 130, 246, 0.08);
-  color: #2563eb;
-  border-color: rgba(59, 130, 246, 0.2);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
 }
 
 .time-badge.human {
@@ -448,10 +448,6 @@
   border-color: rgba(16, 185, 129, 0.25);
 }
 
-@media (prefers-color-scheme: dark) {
-  .time-badge.agent { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
-  .time-badge.efficiency { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-}
 
 .task-card-footer {
   display: flex;

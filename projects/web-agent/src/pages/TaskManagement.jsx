@@ -50,6 +50,7 @@ const EMPTY_FORM = { title: '', platform: 'iOS', screenIds: [], description: '',
 
 function formatDuration(ms) {
   const totalMin = Math.round(ms / 60000)
+  if (totalMin < 1) return '1분 이내'
   if (totalMin < 60) return `${totalMin}분`
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
@@ -421,15 +422,10 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                 </ul>
               )}
               {task.status === 'completed' && task.started_at && (() => {
-                const startTs = task.started_at
-                const agentMs = new Date(task.updated_at) - new Date(startTs)
-                const humanMs = task.humanEstimateMinutes ? task.humanEstimateMinutes * 60000 : null
-                const ratio = humanMs && agentMs > 0 ? (humanMs / agentMs).toFixed(1) : null
+                const agentMs = new Date(task.updated_at) - new Date(task.started_at)
                 return (
                   <div className="task-time-row">
                     <span className="time-badge agent">⚡ {formatDuration(agentMs)}</span>
-                    {humanMs && <span className="time-badge human">👤 {formatDuration(humanMs)}</span>}
-                    {ratio && parseFloat(ratio) > 1 && <span className="time-badge efficiency">{ratio}x 빠름</span>}
                   </div>
                 )
               })()}

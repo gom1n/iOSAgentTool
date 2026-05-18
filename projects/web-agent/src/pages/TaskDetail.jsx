@@ -129,6 +129,11 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
   const [editingScheme, setEditingScheme] = useState(false)
   const [schemeInput, setSchemeInput]     = useState(task.scheme || '')
 
+  // 실시간 에이전트 로그
+  const [agentLogs, setAgentLogs]       = useState([])
+  const [agentRunning, setAgentRunning] = useState(false)
+  const liveLogRef = useRef(null)
+
   // 프로젝트 scheme 로드
   useEffect(() => {
     if (!task.projectKey) return
@@ -139,6 +144,27 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
       setSelectedSchemeIdx(0)
     }
   }, [task.projectKey])
+
+  // 실시간 에이전트 로그 폴링 (in-progress일 때만)
+  useEffect(() => {
+    if (task.status !== 'in-progress' || !task.projectKey) return
+    const fetchAgentLogs = async () => {
+      try {
+        const r = await fetch(`/api/agent-logs?project=${encodeURIComponent(task.projectKey)}`)
+        const data = await r.json()
+        setAgentLogs(data.logs || [])
+        setAgentRunning(!!data.running)
+      } catch {}
+    }
+    fetchAgentLogs()
+    const id = setInterval(fetchAgentLogs, 2000)
+    return () => clearInterval(id)
+  }, [task.status, task.projectKey])
+
+  // 실시간 로그 자동 스크롤
+  useEffect(() => {
+    if (liveLogRef.current) liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight
+  }, [agentLogs])
 
   // 빌드 로그 폴링
   useEffect(() => {
@@ -159,18 +185,31 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
     if (buildLogRef.current) buildLogRef.current.scrollTop = buildLogRef.current.scrollHeight
   }, [buildLogs])
 
-  // 작업 폴링
+  // 작업 폴링 — 파일시스템에서 직접 읽어 localStorage 중간 레이어 제거
   useEffect(() => {
-    const id = setInterval(() => {
-      const all = JSON.parse(localStorage.getItem('acc_tasks') || '[]')
-      const updated = all.find(t => t.id === task.id)
-      if (updated && JSON.stringify(updated) !== JSON.stringify(task)) {
-        setTask(updated)
-        onTaskUpdate?.(updated)
-      }
-    }, 3000)
+    const taskId = task.id
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/task-queue')
+        if (!res.ok) return
+        const all = await res.json()
+        const ft = all.find(t => t.id === taskId)
+        if (!ft) return
+        setTask(prev => {
+          if (JSON.stringify(ft) === JSON.stringify(prev)) return prev
+          onTaskUpdate?.(ft)
+          const stored = JSON.parse(localStorage.getItem('acc_tasks') || '[]')
+          localStorage.setItem('acc_tasks', JSON.stringify(
+            stored.map(t => t.id === ft.id ? { ...t, ...ft } : t)
+          ))
+          return ft
+        })
+      } catch {}
+    }
+    poll()
+    const id = setInterval(poll, 2000)
     return () => clearInterval(id)
-  }, [task])
+  }, [])
 
   const updateTask = (patch) => {
     const all = JSON.parse(localStorage.getItem('acc_tasks') || '[]')
@@ -297,6 +336,19 @@ export default function TaskDetail({ task: initialTask, onBack, onTaskUpdate }) 
           )
         })}
       </div>
+
+      {/* 실시간 에이전트 로그 */}
+      {task.status === 'in-progress' && task.projectKey && (agentRunning || agentLogs.length > 0) && (
+        <div className="live-log-wrap">
+          <div className="live-log-header">
+            <span className="live-log-title">에이전트 출력</span>
+            {agentRunning && <span className="live-log-badge">LIVE</span>}
+          </div>
+          <pre className="live-log-body" ref={liveLogRef}>
+            {agentLogs.length > 0 ? agentLogs.join('\n') : '출력 대기 중...'}
+          </pre>
+        </div>
+      )}
 
       {/* Main Body */}
       <div className="detail-body">
