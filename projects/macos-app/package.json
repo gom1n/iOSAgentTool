@@ -6,8 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "dev": "electron .",
+    "download-node": "node scripts/download-node.js",
     "build:web": "cd ../web-agent && BUILD_TARGET=electron npm run build",
-    "build:mac": "npm run build:web && DEBUG=electron-builder CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
+    "build:mac": "npm run download-node && npm run build:web && DEBUG=electron-builder CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
     "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
@@ -43,6 +44,11 @@
       {
         "from": "../../shared",
         "to": "shared",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "assets/node",
+        "to": "node",
         "filter": ["**/*"]
       }
     ],

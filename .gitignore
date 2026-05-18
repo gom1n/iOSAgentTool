@@ -24,3 +24,6 @@ shared/screens/*/
 # 의존성
 node_modules/
 **/node_modules/
+
+# 번들 Node.js 바이너리 (npm run download-node 로 생성)
+projects/macos-app/assets/node/

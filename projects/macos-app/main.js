@@ -13,19 +13,24 @@ const ROOT = isDev
 let mainWindow = null
 const childProcesses = []
 
-function spawnLaunchers() {
-  const launcherDir = isDev
-    ? path.join(ROOT, 'launcher')
-    : path.join(ROOT, 'launcher')
+// 패키징된 앱에서는 번들된 Node 바이너리 사용, 개발 시에는 시스템 node 사용
+function getNodeBin() {
+  if (isDev) return 'node'
+  return path.join(process.resourcesPath, 'node', process.arch, 'node')
+}
 
-  const serverProc = spawn('node', [path.join(launcherDir, 'server.js')], {
+function spawnLaunchers() {
+  const nodeBin     = getNodeBin()
+  const launcherDir = path.join(ROOT, 'launcher')
+
+  const serverProc = spawn(nodeBin, [path.join(launcherDir, 'server.js')], {
     cwd: ROOT,
     env: { ...process.env },
     stdio: 'inherit',
   })
   childProcesses.push(serverProc)
 
-  const watcherProc = spawn('node', [path.join(launcherDir, 'ios-watcher.js')], {
+  const watcherProc = spawn(nodeBin, [path.join(launcherDir, 'ios-watcher.js')], {
     cwd: ROOT,
     env: { ...process.env },
     stdio: 'inherit',
@@ -49,7 +54,7 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: 'default',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
