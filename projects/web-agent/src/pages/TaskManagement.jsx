@@ -46,7 +46,7 @@ function loadScreens() {
   return [{ id: 'CHECK_BREAKDOWN_02', name: '개방플랫폼 분기', platform: 'iOS' }]
 }
 
-const EMPTY_FORM = { title: '', platform: 'iOS', screenIds: [], description: '', requirements: '', projectKey: '', projectPath: '', scheme: '' }
+const EMPTY_FORM = { title: '', platform: 'iOS', screenIds: [], description: '', requirements: '', projectKey: '', projectPath: '', scheme: '', apiMode: false, apiSpecUrl: '', apiSpecText: '' }
 
 function formatDuration(ms) {
   const totalMin = Math.round(ms / 60000)
@@ -67,6 +67,9 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
   const [editId, setEditId]     = useState(null)
   const [form, setForm]         = useState(EMPTY_FORM)
   const [menuOpenId, setMenuOpenId] = useState(null)
+  const [wikiFetching, setWikiFetching] = useState(false)
+  const [wikiError, setWikiError] = useState('')
+  const [wikiPreview, setWikiPreview] = useState('')
   const menuRef = useRef(null)
   const { showTour, startTour, closeTour } = usePageTour('tasks')
 
@@ -126,6 +129,8 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
     }
     setForm(EMPTY_FORM)
     setShowForm(false)
+    setWikiPreview('')
+    setWikiError('')
   }
 
   const handleEdit = (task) => {
@@ -304,12 +309,100 @@ export default function TaskManagement({ onOpenTask, platformFilter }) {
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label>요구사항 (줄바꿈으로 구분)</label>
-              <textarea rows={5} placeholder={"이메일/비밀번호 입력\n유효성 검사\n소셜 로그인 지원"}
-                value={form.requirements} onChange={e => setForm(f => ({ ...f, requirements: e.target.value }))} />
+              <div className="api-toggle-row">
+                <label>요구사항</label>
+                <label className="api-toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={form.apiMode}
+                    onChange={() => setForm(f => ({ ...f, apiMode: !f.apiMode }))}
+                  />
+                  <span className="api-toggle-track">
+                    <span className="api-toggle-thumb" />
+                  </span>
+                  <span className="api-toggle-label">API 연동</span>
+                </label>
+              </div>
+
+              {!form.apiMode ? (
+                <textarea rows={5} placeholder={"이메일/비밀번호 입력\n유효성 검사\n소셜 로그인 지원"}
+                  value={form.requirements} onChange={e => setForm(f => ({ ...f, requirements: e.target.value }))} />
+              ) : (
+                <div className="api-mode-section">
+                  <textarea rows={3} placeholder={"어떤 API를 연동해야 하나요?\n예: 결제 API 연동, 사용자 조회 API 신규 추가"}
+                    value={form.requirements} onChange={e => setForm(f => ({ ...f, requirements: e.target.value }))} />
+
+                  <div className="api-spec-divider">
+                    <span>API 명세</span>
+                  </div>
+
+                  <div className="api-spec-options">
+                    <div className="api-spec-option">
+                      <label className="api-spec-label">Wiki / Swagger URL</label>
+                      <div className="api-url-row">
+                        <input
+                          type="text"
+                          placeholder="https://konawiki.konai.com/pages/viewpage.action?pageId=..."
+                          value={form.apiSpecUrl}
+                          onChange={e => { setForm(f => ({ ...f, apiSpecUrl: e.target.value })); setWikiError('') }}
+                        />
+                        <button
+                          type="button"
+                          className={`api-fetch-btn ${wikiFetching ? 'loading' : ''}`}
+                          disabled={!form.apiSpecUrl || wikiFetching}
+                          onClick={async () => {
+                            setWikiFetching(true)
+                            setWikiError('')
+                            try {
+                              const res = await fetch('/api/fetch-wiki', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ url: form.apiSpecUrl }),
+                              })
+                              const data = await res.json()
+                              if (!res.ok) throw new Error(data.error)
+                              setForm(f => ({ ...f, apiSpecText: data.structured || data.text }))
+                              setWikiPreview(data.structured || '')
+                            } catch (e) {
+                              setWikiError(e.message)
+                            } finally {
+                              setWikiFetching(false)
+                            }
+                          }}
+                        >
+                          {wikiFetching ? '로딩...' : '가져오기'}
+                        </button>
+                      </div>
+                      {wikiError && <span className="api-fetch-error">{wikiError}</span>}
+                    </div>
+
+                    <div className="api-spec-or">또는</div>
+
+                    <div className="api-spec-option">
+                      <label className="api-spec-label">명세 붙여넣기 <span className="api-spec-hint">위키·curl·JSON 뭐든</span></label>
+                      <textarea
+                        rows={4}
+                        placeholder={"GET /api/v1/users\nAuthorization: Bearer {token}\n\n응답: { id, name, email }"}
+                        value={form.apiSpecText}
+                        onChange={e => { setForm(f => ({ ...f, apiSpecText: e.target.value })); setWikiPreview('') }}
+                      />
+                      {wikiPreview && (
+                        <div className="api-spec-preview">
+                          <div className="api-spec-preview-header">
+                            <span>파싱 결과 미리보기</span>
+                            <button type="button" onClick={() => setWikiPreview('')}>×</button>
+                          </div>
+                          <pre className="api-spec-preview-body">{wikiPreview}</pre>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
+              )}
             </div>
             <div className="form-actions">
-              <button type="button" className="btn-ghost" onClick={() => { setForm(EMPTY_FORM); setEditId(null); setShowForm(false) }}>취소</button>
+              <button type="button" className="btn-ghost" onClick={() => { setForm(EMPTY_FORM); setEditId(null); setShowForm(false); setWikiPreview(''); setWikiError('') }}>취소</button>
               <button type="submit" className="btn-primary">{editId ? '수정 완료' : '작업 생성'}</button>
             </div>
           </form>

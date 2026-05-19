@@ -3,6 +3,7 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { exec, execSync, spawn } from 'child_process'
 import http from 'http'
+import https from 'https'
 import crypto from 'crypto'
 import { promisify } from 'util'
 
@@ -10,6 +11,366 @@ const pbkdf2 = promisify(crypto.pbkdf2)
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..', '..')
+
+function loadEnv() {
+  const envPath = join(ROOT, '.env')
+  if (!existsSync(envPath)) return {}
+  return Object.fromEntries(
+    readFileSync(envPath, 'utf-8')
+      .split('\n')
+      .filter(l => l.trim() && !l.startsWith('#') && l.includes('='))
+      .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] })
+  )
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|tr|li|h[1-6])[^>]*>/gi, '\n')
+    .replace(/<\/?(th|td)[^>]*>/gi, '\t')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]{3,}/g, '  ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+async function fetchWithAuth(url, username, password, certPath) {
+  const auth = Buffer.from(`${username}:${password}`).toString('base64')
+  const parsed = new URL(url)
+  const options = {
+    hostname: parsed.hostname,
+    path: parsed.pathname + parsed.search,
+    headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+    ...(certPath && existsSync(certPath) ? { ca: readFileSync(certPath) } : { rejectUnauthorized: false }),
+  }
+  return new Promise((resolve, reject) => {
+    const req = https.get(options, res => {
+      let data = ''
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => resolve({ status: res.statusCode, body: data }))
+    })
+    req.on('error', reject)
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')) })
+  })
+}
+
+function extractPageId(url) {
+  try {
+    const u = new URL(url)
+    return u.searchParams.get('pageId') || u.pathname.split('/').pop()
+  } catch { return null }
+}
+
+function structureApiSpec(rawText) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean)
+  const TYPES = /^(NUMBER|STRING|BOOLEAN|INTEGER|ARRAY|OBJECT|DATE|LIST|LONG|DOUBLE|FLOAT|MAP)$/
+
+  let method = '', url = '', title = ''
+  const reqParams = [], resParams = []
+
+  // title
+  const titleIdx = lines.findIndex(l => l === 'API Title')
+  if (titleIdx >= 0) title = lines[titleIdx + 1] || ''
+
+  // method & url: scan for standalone HTTP verb then path
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    if (/^(GET|POST|PUT|DELETE|PATCH|HEAD)$/.test(l)) method = method || l
+    if (/^\/[a-zA-Z0-9\/\-_{}]+$/.test(l) && l.length > 3) url = url || l
+  }
+
+  // param table parser — rawLines 사용 (trim 하면 탭이 사라져서 필드명 못 찾음)
+  const rawLines = rawText.split('\n')
+  let section = ''
+  let sectionStart = -1
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i]
+    if (l.includes('Request Parameter'))  { section = 'req'; sectionStart = i; continue }
+    if (l.includes('Response Parameter')) { section = 'res'; sectionStart = i; continue }
+    if (sectionStart >= 0 && /Error Code|Example|History/.test(l)) { section = ''; sectionStart = -1; continue }
+    if (!section) continue
+    if (/^Field/.test(l.trim())) continue
+
+    const fieldMatch = l.match(/^\t([a-z][a-zA-Z0-9_]+)\t/)
+    if (!fieldMatch) continue
+    const fieldName = fieldMatch[1]
+
+    const win = rawLines.slice(i + 1, i + 9).map(s => s.trim())
+    const typeFound = win.find(s => TYPES.test(s))
+    if (!typeFound) continue
+
+    const winStr = win.join(' ')
+    const mandatory = /MANDATORY/i.test(winStr)
+
+    const entry = { field: fieldName, type: typeFound, mandatory }
+    if (section === 'req') reqParams.push(entry)
+    else resParams.push(entry)
+  }
+
+  // JSON example blocks — greedy match of { ... }
+  const jsonBlocks = []
+  const jsonRe = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}/g
+  let m
+  while ((m = jsonRe.exec(rawText)) !== null) {
+    try { JSON.parse(m[0]); jsonBlocks.push(JSON.stringify(JSON.parse(m[0]), null, 2)) } catch {}
+  }
+
+  // Compose
+  const out = []
+  if (title) out.push(`[${title}]`, '')
+  if (method || url) out.push(`${method} ${url}`.trim(), '')
+
+  if (reqParams.length) {
+    const s = reqParams.map(p => `${p.field}(${p.type}${p.mandatory ? ', MANDATORY' : ''})`).join(', ')
+    out.push(`Request:  ${s}`)
+  }
+  if (resParams.length) {
+    const s = resParams.map(p => TYPES.test(p.type) && p.type !== 'STRING' ? `${p.field}(${p.type})` : p.field).join(', ')
+    out.push(`Response: ${s}`)
+  }
+
+  if (jsonBlocks.length >= 1) {
+    // Request 예시에 누락된 optional 파라미터 보완
+    let reqExample = jsonBlocks[0]
+    try {
+      const parsed = JSON.parse(reqExample)
+      const missing = reqParams.filter(p => !p.mandatory && !(p.field in parsed))
+      missing.forEach(p => { parsed[p.field] = `(OPTIONAL) ${p.type}` })
+      reqExample = JSON.stringify(parsed, null, 2)
+    } catch {}
+
+    out.push('', '예시:', reqExample)
+    if (jsonBlocks.length >= 2) out.push('→', jsonBlocks[1])
+  }
+
+  return out.join('\n')
+}
+
+function resolveRef(ref, spec) {
+  if (!ref || !ref.startsWith('#/')) return null
+  const parts = ref.slice(2).split('/')
+  let cur = spec
+  for (const p of parts) { cur = cur?.[p]; if (!cur) return null }
+  return cur
+}
+
+function schemaToExample(schema, spec, depth = 0) {
+  if (!schema || depth > 4) return null
+  if (schema['$ref']) schema = resolveRef(schema['$ref'], spec) || schema
+  const type = schema.type || (schema.properties ? 'object' : null)
+  if (type === 'object' || schema.properties) {
+    const obj = {}
+    for (const [k, v] of Object.entries(schema.properties || {})) {
+      obj[k] = schemaToExample(v, spec, depth + 1)
+    }
+    return obj
+  }
+  if (type === 'array') return [schemaToExample(schema.items, spec, depth + 1)]
+  if (schema.example !== undefined) return schema.example
+  if (schema.enum) return schema.enum[0]
+  const fmt = schema.format || ''
+  if (type === 'integer' || type === 'number') return fmt === 'int64' ? 12345678 : 0
+  if (type === 'boolean') return true
+  if (type === 'string') {
+    if (fmt === 'date-time') return '2026-01-01T00:00:00Z'
+    if (fmt === 'date') return '2026-01-01'
+    return 'string'
+  }
+  return null
+}
+
+function parseSwaggerOperation(spec, operationId, tag) {
+  const isV3 = !!spec.openapi
+  const schemas = isV3 ? spec.components?.schemas : spec.definitions
+
+  // operationId 또는 tag로 매칭
+  let matched = null, matchedPath = '', matchedMethod = ''
+  for (const [path, methods] of Object.entries(spec.paths || {})) {
+    for (const [method, op] of Object.entries(methods)) {
+      if (typeof op !== 'object') continue
+      const idMatch = operationId && op.operationId === operationId
+      const tagMatch = !operationId && tag && op.tags?.includes(tag)
+      if (idMatch || tagMatch) {
+        matched = op; matchedPath = path; matchedMethod = method.toUpperCase()
+        if (idMatch) break
+      }
+    }
+    if (matched && operationId) break
+  }
+  if (!matched) return null
+
+  // Request params
+  const reqParams = []
+  for (const p of (matched.parameters || [])) {
+    if (p.in === 'path' || p.in === 'query' || p.in === 'header') {
+      const schema = p.schema || {}
+      reqParams.push({ field: p.name, type: (schema.type || p.type || 'string').toUpperCase(), mandatory: !!p.required, in: p.in })
+    }
+    if (p.in === 'body' && p.schema) {
+      const bodySchema = p.schema['$ref'] ? resolveRef(p.schema['$ref'], spec) : p.schema
+      for (const [k, v] of Object.entries(bodySchema?.properties || {})) {
+        const required = bodySchema.required?.includes(k)
+        reqParams.push({ field: k, type: (v.type || 'object').toUpperCase(), mandatory: required })
+      }
+    }
+  }
+
+  // OpenAPI 3.0 requestBody
+  if (isV3 && matched.requestBody) {
+    const content = matched.requestBody.content?.['application/json']
+    const bodySchema = content?.schema?.['$ref'] ? resolveRef(content.schema['$ref'], spec) : content?.schema
+    for (const [k, v] of Object.entries(bodySchema?.properties || {})) {
+      const required = bodySchema.required?.includes(k)
+      reqParams.push({ field: k, type: (v.type || 'object').toUpperCase(), mandatory: required })
+    }
+  }
+
+  // Response schema
+  const resParams = []
+  const res200 = matched.responses?.['200']
+  const resSchema = isV3
+    ? res200?.content?.['application/json']?.schema
+    : res200?.schema
+  const resolvedRes = resSchema?.['$ref'] ? resolveRef(resSchema['$ref'], spec) : resSchema
+  for (const [k, v] of Object.entries(resolvedRes?.properties || {})) {
+    resParams.push({ field: k, type: (v.type || 'object').toUpperCase() })
+  }
+
+  // 예시 생성
+  const reqExample = {}
+  if (isV3 && matched.requestBody) {
+    const content = matched.requestBody.content?.['application/json']
+    const bodySchema = content?.schema?.['$ref'] ? resolveRef(content.schema['$ref'], spec) : content?.schema
+    Object.assign(reqExample, schemaToExample(bodySchema, spec) || {})
+  }
+  for (const p of (matched.parameters || [])) {
+    if (p.in === 'query') reqExample[p.name] = schemaToExample(p.schema || {}, spec) ?? 'value'
+  }
+
+  const resExample = schemaToExample(resolvedRes, spec)
+
+  const out = []
+  out.push(`[${matched.summary || matched.operationId || ''}]`, '')
+  out.push(`${matchedMethod} ${matchedPath}`, '')
+  if (matched.description) out.push(`설명: ${matched.description.replace(/<[^>]+>/g,'').trim()}`, '')
+  if (reqParams.length) {
+    out.push(`Request:  ${reqParams.map(p => `${p.field}(${p.type}${p.mandatory ? ', MANDATORY' : ', OPTIONAL'})`).join(', ')}`)
+  }
+  if (resParams.length) {
+    out.push(`Response: ${resParams.map(p => p.field).join(', ')}`)
+  }
+  if (Object.keys(reqExample).length || resExample) {
+    out.push('', '예시:')
+    if (Object.keys(reqExample).length) out.push(JSON.stringify(reqExample, null, 2))
+    if (resExample) out.push('→', JSON.stringify(resExample, null, 2))
+  }
+  return out.join('\n')
+}
+
+async function fetchSwaggerSpec(swaggerUrl, certPath) {
+  const u = new URL(swaggerUrl)
+  const base = `${u.protocol}//${u.host}${u.pathname.replace(/\/swagger-ui[^/]*/,'').replace(/\/index\.html$/,'')}`
+
+  // fragment から operationId と tag を抽出
+  const frag = decodeURIComponent(u.hash.replace('#/', ''))
+  const fragParts = frag.split('/')
+  const tag = fragParts[0] || ''
+  const operationId = fragParts[1] || ''
+
+  // spec 후보 경로 순서대로 시도
+  const candidates = [
+    `${base}/v3/api-docs`,
+    `${base}/v2/api-docs`,
+    `${base}/swagger.json`,
+    `${base}/api-docs`,
+    `${u.protocol}//${u.host}/v3/api-docs`,
+    `${u.protocol}//${u.host}/v2/api-docs`,
+  ]
+
+  let spec = null
+  for (const specUrl of candidates) {
+    try {
+      const pu = new URL(specUrl)
+      const isHttps = pu.protocol === 'https:'
+      const mod = isHttps ? https : http
+      const result = await new Promise((resolve, reject) => {
+        const req = mod.get({
+          hostname: pu.hostname, port: pu.port || undefined,
+          path: pu.pathname + pu.search,
+          headers: { Accept: 'application/json' },
+          ...(isHttps ? { rejectUnauthorized: false } : {}),
+          ...(certPath && existsSync(certPath) ? { ca: readFileSync(certPath) } : {}),
+        }, res => {
+          let d = ''
+          res.on('data', c => d += c)
+          res.on('end', () => resolve({ status: res.statusCode, body: d }))
+        })
+        req.on('error', reject)
+        req.setTimeout(8000, () => { req.destroy(); reject(new Error('timeout')) })
+      })
+      if (result.status === 200) {
+        const j = JSON.parse(result.body)
+        if (j.paths) { spec = j; break }
+      }
+    } catch {}
+  }
+
+  if (!spec) throw new Error('Swagger spec을 찾을 수 없습니다 (v3/api-docs, v2/api-docs 시도)')
+
+  // operationId/tag 없으면 전체 목록 반환
+  if (!operationId && !tag) {
+    const lines = [`[${spec.info?.title || 'API'}] 엔드포인트 목록`, '']
+    const tagMap = {}
+    for (const [path, methods] of Object.entries(spec.paths || {})) {
+      for (const [method, op] of Object.entries(methods)) {
+        if (typeof op !== 'object') continue
+        const t = op.tags?.[0] || '기타'
+        if (!tagMap[t]) tagMap[t] = []
+        tagMap[t].push(`  ${method.toUpperCase()} ${path}  — ${op.summary || op.operationId || ''}`)
+      }
+    }
+    for (const [t, ops] of Object.entries(tagMap)) {
+      lines.push(`▸ ${t}`)
+      lines.push(...ops)
+      lines.push('')
+    }
+    lines.push('특정 엔드포인트를 보려면 URL 뒤에 #/{태그}/{operationId} 형식으로 입력하세요.')
+    return { title: spec.info?.title || '', structured: lines.join('\n'), url: swaggerUrl }
+  }
+
+  const structured = parseSwaggerOperation(spec, operationId, tag)
+  if (!structured) throw new Error(`operationId "${operationId}" 또는 tag "${tag}"를 spec에서 찾을 수 없습니다`)
+
+  return { title: spec.info?.title || '', structured, url: swaggerUrl }
+}
+
+async function fetchConfluencePage(pageUrl, username, password, certPath) {
+  const pageId = extractPageId(pageUrl)
+  if (!pageId) throw new Error('pageId를 URL에서 찾을 수 없습니다')
+
+  const base = new URL(pageUrl)
+  const apiUrl = `${base.protocol}//${base.host}/rest/api/content/${pageId}?expand=body.view,title,space`
+
+  const { status, body } = await fetchWithAuth(apiUrl, username, password, certPath)
+  if (status === 401) throw new Error('인증 실패 — WIKI_USERNAME / WIKI_PASSWORD를 확인하세요')
+  if (status !== 200) throw new Error(`위키 응답 오류 (HTTP ${status})`)
+
+  const json = JSON.parse(body)
+  const title = json.title || ''
+  const html = json.body?.view?.value || ''
+  const text = stripHtml(html)
+  const structured = structureApiSpec(text)
+  return { title, text, structured, pageId, url: pageUrl }
+}
 
 async function getClaudeSessionKey() {
   // 1. 키체인에서 Claude Safe Storage 비밀번호 가져오기
@@ -712,6 +1073,37 @@ export function taskSyncPlugin() {
 
         res.writeHead(404)
         res.end(JSON.stringify({ error: 'not found' }))
+      })
+
+      // POST /api/fetch-wiki — 위키(Confluence) 또는 Swagger 파싱
+      server.middlewares.use('/api/fetch-wiki', async (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        if (req.method !== 'POST') { res.writeHead(405); return res.end(JSON.stringify({ error: 'method not allowed' })) }
+
+        const { url } = await readBody(req)
+        if (!url) { res.writeHead(400); return res.end(JSON.stringify({ error: 'url required' })) }
+
+        const env = loadEnv()
+        const isSwagger = /swagger-ui|swagger\.json|api-docs/i.test(url)
+
+        try {
+          if (isSwagger) {
+            const result = await fetchSwaggerSpec(url, env.CERT_PATH)
+            res.end(JSON.stringify({ ok: true, ...result }))
+          } else {
+            const username = env.WIKI_USERNAME
+            const password = env.WIKI_PASSWORD
+            if (!username || !password) {
+              res.writeHead(400)
+              return res.end(JSON.stringify({ error: '.env에 WIKI_USERNAME과 WIKI_PASSWORD를 설정해주세요' }))
+            }
+            const result = await fetchConfluencePage(url, username, password, env.CERT_PATH)
+            res.end(JSON.stringify({ ok: true, ...result }))
+          }
+        } catch (e) {
+          res.writeHead(500)
+          res.end(JSON.stringify({ error: e.message }))
+        }
       })
 
       // POST /api/compress-spec — Python 스크립트로 spec.md 경량화

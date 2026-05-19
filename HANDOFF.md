@@ -1,6 +1,6 @@
 # Agent System — 핸드오프 노트
 
-> 마지막 업데이트: 2026-05-07
+> 마지막 업데이트: 2026-05-18
 
 **GitHub**: https://github.com/gom1n/iOSAgentTool.git
 
@@ -46,6 +46,12 @@ agent-system/
 - **작업 파이프라인**: pending → in-progress → completed (파일 이동 방식)
 - **Claude 사용량**: Chromium AES-128-CBC 복호화, `~/.claude.json`의 `oauthAccount.organizationUuid` 사용
 - **agentReports**: PATCH /api/task-queue/:id 시 agentSummary → agentReports 배열 누적
+
+## TaskDetail 동작 방식
+
+- **실시간 폴링**: localStorage 경유 없이 `/api/task-queue`를 직접 2초마다 폴링. 변경 시 localStorage도 함께 동기화해 다른 화면과 일관성 유지.
+- **실시간 에이전트 출력**: `in-progress` + `projectKey` 있을 때, 파이프라인 아래에 `/api/agent-logs?project=...` 2초 폴링 패널 표시. 에이전트 실행 중이면 LIVE 배지 깜빡임.
+- **소요시간 딱지**: 완료 작업에 `⚡ N분` 딱지 하나만 표시 (회색). 인간추정·빠르기 딱지는 데이터는 유지하되 UI에서 제거.
 
 ## 경로 처리
 
