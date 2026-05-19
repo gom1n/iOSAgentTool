@@ -1,91 +1,14 @@
 [
   {
-    "label": "코나카드",
-    "path": "/Users/mc.go14/Desktop/kona-iOS",
+    "label": "프로젝트명",
+    "path": "/path/to/your/xcode/project",
     "schemes": [
       {
-        "name": "KonaWallet",
-        "configuration": "DebugDev3",
+        "name": "SchemeName",
+        "configuration": "Debug",
         "destination": "generic/platform=iOS"
       }
     ],
     "color": "#ff3d3d"
-  },
-  {
-    "label": "지역화폐2.0",
-    "path": "/Users/mc.go14/Desktop/localcard_iOS",
-    "schemes": [
-      {
-        "name": "GgCard",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "GimpoPay",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Konadure",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Cheonan",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Incheon",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Chungju",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Sjpay",
-        "configuration": "Debug-Dev3",
-        "destination": "generic/platform=iOS"
-      }
-    ],
-    "color": "#f5e20f"
-  },
-  {
-    "label": "(구)지역화폐",
-    "path": "/Users/mc.go14/Desktop/bhchoi",
-    "schemes": [
-      {
-        "name": "Ulsanpay",
-        "configuration": "Debug",
-        "destination": "generic/platform=iOS"
-      }
-    ],
-    "color": "#a54ce1"
-  },
-  {
-    "label": "MONA",
-    "path": "/Users/mc.go14/Desktop/mona-app-ios/Konai_MonaApp",
-    "schemes": [
-      {
-        "name": "Konai_MonaApp",
-        "configuration": "Debug",
-        "destination": "generic/platform=iOS"
-      },
-      {
-        "name": "Konai_MonaApp_Dev",
-        "configuration": "Debug",
-        "destination": "generic/platform=iOS"
-      }
-    ],
-    "color": "#3582fd"
-  },
-  {
-    "label": "코나마켓",
-    "path": "/Users/mc.go14/Desktop/flea_market_ios",
-    "color": "#ff7575",
-    "schemes": []
   }
 ]
